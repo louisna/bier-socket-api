@@ -8,7 +8,22 @@ use pnet::packet::ethernet::MutableEthernetPacket;
 mod bier;
 use bier::MutableBIERPacket;
 
+extern crate libc;
+use std::{io, mem, net::UdpSocket};
+
 fn main() {
+    read_udp_and_magic();
+}
+
+fn read_udp_and_magic() {
+    let udp_socket = UdpSocket::bind("[::1]:8888").unwrap();
+    let mut buff = vec![0; 1000];
+    udp_socket.recv_from(&mut buff).unwrap();
+    println!("Received: {:?}", buff);
+    simple_ethernet_socket(&buff[..100]);
+}
+
+fn simple_ethernet_socket(buff: &[u8]) {
     println!("Hello, world!");
 
     let iface_name = "en0";
@@ -28,14 +43,19 @@ fn main() {
         Err(e) => panic!("Error happened {}", e),
     };
 
-    let mut udp_buffer = [0xffu8; 20];
+    println!("Deuxieme: {:?}", buff);
+
+    let mut udp_buffer = vec![0; buff.len() + 8];
+    println!("{} {}", udp_buffer.len(), buff.len());
+    udp_buffer[8..].copy_from_slice(buff);
     let mut udp_packet = MutableUdpPacket::new(&mut udp_buffer).unwrap();
-    udp_packet.set_length(20);
+    udp_packet.set_length((buff.len() + 8) as u16);
     udp_packet.set_source(0b11111111);
     udp_packet.set_destination(0b1111111100000000);
     udp_packet.set_checksum(0);
+    println!("{:?}", udp_buffer);
 
-    let mut bier_buffer = [0u8; 12 + 20 + 8];
+    let mut bier_buffer = vec![0u8; buff.len() + 20 + 8];
     let mut bier_packet = MutableBIERPacket::new(&mut bier_buffer).unwrap();
     bier_packet.set_bift_id(1);
     bier_packet.set_tc(2);
@@ -55,7 +75,7 @@ fn main() {
 
     bier_packet.set_payload(&mut udp_buffer);
 
-    let mut ethernet_buffer = [0u8; 12 + 20 + 8 + 14];
+    let mut ethernet_buffer = vec![0u8; buff.len() + 20 + 8 + 14];
     let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer).unwrap();
 
     ethernet_packet.set_destination(MacAddr::broadcast());
