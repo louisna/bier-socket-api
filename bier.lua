@@ -62,6 +62,8 @@ end
 
 local ethertype = DissectorTable.get("ethertype")
 ethertype:add(0xab37, bier_protocol)
+local ipv6_next = DissectorTable.get("ip.proto")
+ipv6_next:add(0xfd, bier_protocol)
 
 --local udp = DissectorTable:get_dissector("udp")
 local bier_proto = DissectorTable.new("bier.protolist", bier_protocol.fields.proto)
