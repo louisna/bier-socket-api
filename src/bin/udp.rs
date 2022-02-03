@@ -1,4 +1,4 @@
-use std::{io, mem, net::UdpSocket};
+use std::net::UdpSocket;
 
 fn main() {
     let udp_socket = UdpSocket::bind("[::1]:8080").unwrap();

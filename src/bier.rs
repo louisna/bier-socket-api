@@ -4,6 +4,7 @@ use pnet_macros::packet;
 use pnet_macros_support::types::*;
 
 #[packet]
+#[allow(clippy::upper_case_acronyms)]
 pub struct BIER {
     pub bift_id: u20be,
     pub tc: u3,
@@ -19,7 +20,7 @@ pub struct BIER {
     pub dscp2: u2,
     pub proto: u6,
     pub bfir_id: u16be,
-    #[length_fn="bitstring_length"]
+    #[length_fn = "bitstring_length"]
     pub bitstring: Vec<u32be>,
     #[payload]
     pub payload: Vec<u8>,
@@ -35,6 +36,7 @@ impl MutableBIERPacket<'_> {
         self.set_dscp2(dscp & 3);
     }
 
+    #[allow(dead_code)]
     pub fn get_dscp(&mut self) -> u8 {
         (self.get_dscp4() << 2) + self.get_dscp2()
     }
@@ -42,6 +44,7 @@ impl MutableBIERPacket<'_> {
 
 // Do not know if useful to repeat it
 impl BIERPacket<'_> {
+    #[allow(dead_code)]
     pub fn get_dscp(&self) -> u8 {
         (self.get_dscp4() << 2) + self.get_dscp2()
     }
