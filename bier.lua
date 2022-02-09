@@ -48,12 +48,12 @@ function bier_protocol.dissector(buffer, pinfo, tree)
     subtree:add(bfir_id, buffer(10,2))
     subtree:add(bitstring, buffer(12,bitstring_length))
     
-    if proto == 0x7 then
+    if proto == 0x6 then
         print("Wouais")
     end
     
     pproto = buffer(9):bitfield(2,6)
-    if pproto == 0x7 then
+    if pproto == 0x6 then
         print("OUAISIXISDOFIZFOIIQDFHGKIGHQER")
         print(12 + bitstring_length)
         ipv6:call(buffer(12 + bitstring_length):tvb(), pinfo, tree)

@@ -68,7 +68,7 @@ fn call_lib_bier(buff: &[u8]) {
         rsv: 2,
         dscp4: (3 << 2),
         dscp2: 1,
-        proto: 7,
+        proto: 6,
         bfir_id: 0b1,
         bitstring: vec![0b1010],
         payload: Vec::new(),
