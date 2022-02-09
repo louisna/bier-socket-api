@@ -1,11 +1,11 @@
 extern crate pnet;
 
+pub mod bier {
+
 use pnet_macros::packet;
 use pnet_macros_support::types::*;
-
 #[packet]
-#[allow(clippy::upper_case_acronyms)]
-pub struct BIER {
+pub struct Bier {
     pub bift_id: u20be,
     pub tc: u3,
     pub s: u1,
@@ -26,7 +26,13 @@ pub struct BIER {
     pub payload: Vec<u8>,
 }
 
-impl MutableBIERPacket<'_> {
+impl Bier {
+    pub fn get_dscp(&self) -> u8 {
+        (self.dscp4 << 2) + self.dscp2
+    }
+}
+
+impl MutableBierPacket<'_> {
     /// Override the automatically built "set_dscp4" and "set_dscp2" functions
     /// and provides a wrapper to use the field on a whole.
     /// PLEASE use this function instead of "set_dscp4" and "seet_dscp2"
@@ -43,7 +49,7 @@ impl MutableBIERPacket<'_> {
 }
 
 // Do not know if useful to repeat it
-impl BIERPacket<'_> {
+impl BierPacket<'_> {
     #[allow(dead_code)]
     pub fn get_dscp(&self) -> u8 {
         (self.get_dscp4() << 2) + self.get_dscp2()
@@ -51,7 +57,8 @@ impl BIERPacket<'_> {
 }
 
 #[inline]
-fn bitstring_length(bier: &BIERPacket) -> usize {
+fn bitstring_length(bier: &BierPacket) -> usize {
     println!("{}", 1 << (bier.get_bsl() + 5));
     2 << (bier.get_bsl() + 5 - 3 - 1)
+}
 }

@@ -1,2 +1,2 @@
 # bier-rust
-Rust implementation of BIER encapsulation socket
+Rust implementation of Bier encapsulation socket

@@ -19,7 +19,7 @@ bitstring = ProtoField.bytes("bier.bitstring", "BitString")
 
 bier_protocol.fields = { bfit_id, tc, s, ttl, nibble, version, bsl, entropy, oam, rsv, dscp, proto, bfir_id, bitstring }
 
-udp = Dissector.get("udp")
+ipv6 = Dissector.get("ipv6")
 
 function bier_protocol.dissector(buffer, pinfo, tree)
     length = buffer:len()
@@ -56,7 +56,7 @@ function bier_protocol.dissector(buffer, pinfo, tree)
     if pproto == 0x7 then
         print("OUAISIXISDOFIZFOIIQDFHGKIGHQER")
         print(12 + bitstring_length)
-        udp:call(buffer(12 + bitstring_length):tvb(), pinfo, tree)
+        ipv6:call(buffer(12 + bitstring_length):tvb(), pinfo, tree)
     end
 end
 

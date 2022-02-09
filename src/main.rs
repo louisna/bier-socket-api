@@ -1,13 +1,13 @@
 use pnet::datalink::{Channel, MacAddr};
 
 use pnet::packet::ethernet::MutableEthernetPacket;
-use pnet::packet::ethernet::{EtherType, EtherTypes};
+use pnet::packet::ethernet::{EtherType, EtherTypes, Ethernet};
 use pnet::packet::ip::IpNextHeaderProtocol;
-use pnet::packet::ipv6::MutableIpv6Packet;
-use pnet::packet::udp::MutableUdpPacket;
+use pnet::packet::ipv6::{MutableIpv6Packet, Ipv6};
+use pnet::packet::udp::{MutableUdpPacket, Udp};
 use pnet::packet::Packet;
-mod bier;
-use bier::MutableBIERPacket;
+pub mod bier;
+use bier_rust::{create_bier_packet_encap_ether, bier::bier::Bier, bier::bier::MutableBierPacket};
 
 extern crate libc;
 use std::net::UdpSocket;
@@ -15,7 +15,8 @@ use std::net::UdpSocket;
 fn main() {
     //read_udp_and_magic();
     let buff = vec![255u8; 100];
-    simple_ethernet_socket(&buff, Some(false));
+    //simple_ethernet_socket(&buff, Some(false));
+    call_lib_bier(&buff);
 }
 
 #[allow(dead_code)]
@@ -27,10 +28,79 @@ fn read_udp_and_magic() {
     simple_ethernet_socket(&buff[..100], Some(true));
 }
 
+fn call_lib_bier(buff: &[u8]) {
+    let iface_name = "en0";
+
+    let interfaces = pnet::datalink::interfaces();
+    let interface = interfaces
+        .into_iter()
+        .find(|iface| iface.name == iface_name)
+        .unwrap();
+
+    let udp = Udp {
+        source: 444,
+        destination: 555,
+        length: buff.len() as u16 + 8,
+        checksum: 0,
+        payload: Vec::new(),
+    };
+    let ipv6 = Ipv6 {
+        version: 6,
+        traffic_class: 3,
+        flow_label: 0,
+        payload_length: buff.len() as u16 + 8,
+        next_header: IpNextHeaderProtocol::new(17),
+        hop_limit: 255,
+        source: "babe:1::5".parse().unwrap(),
+        destination: "babe:2::5".parse().unwrap(),
+        payload: Vec::new(),
+    };
+    let bier = Bier {
+        bift_id: 1,
+        tc: 2,
+        s: 0,
+        ttl: 255,
+        nibble: 2,
+        version: 3,
+        bsl: 0,
+        entropy: 0xfffff,
+        oam: 1,
+        rsv: 2,
+        dscp4: (3 << 2),
+        dscp2: 1,
+        proto: 7,
+        bfir_id: 0b1,
+        bitstring: vec![0b1010],
+        payload: Vec::new(),
+    };
+    let eth = Ethernet {
+        destination: MacAddr::broadcast(),
+        source: interface.mac.unwrap(),
+        ethertype: EtherType::new(0xAB37),
+        payload: Vec::new(),
+    };
+    let packet = create_bier_packet_encap_ether(eth, None, bier, ipv6, udp, buff);
+    let (mut sender, mut _receiver) = match pnet::datalink::channel(&interface, Default::default())
+    {
+        Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => panic!("Unknown channel type"),
+        Err(e) => panic!("Error happened {}", e),
+    };
+
+    for _ in 0..10 {
+        sender
+            .send_to(&packet, None)
+            .unwrap()
+            .unwrap();
+
+        println!("Sent a packet!");
+    }
+}
+
 fn simple_ethernet_socket(buff: &[u8], encap_ipv6: Option<bool>) {
     println!("Hello, world!");
 
-    let iface_name = "s-eth0";
+    let iface_name = "en0";
 
     let interfaces = pnet::datalink::interfaces();
     let interface = interfaces
@@ -60,7 +130,7 @@ fn simple_ethernet_socket(buff: &[u8], encap_ipv6: Option<bool>) {
     udp_packet.set_checksum(0);
 
     let mut bier_buffer = vec![0u8; buff.len() + 20 + 8];
-    let mut bier_packet = MutableBIERPacket::new(&mut bier_buffer).unwrap();
+    let mut bier_packet = MutableBierPacket::new(&mut bier_buffer).unwrap();
     bier_packet.set_bift_id(1);
     bier_packet.set_tc(2);
     bier_packet.set_s(0);
@@ -93,7 +163,7 @@ fn simple_ethernet_socket(buff: &[u8], encap_ipv6: Option<bool>) {
             ipv6_packet.set_traffic_class(3);
             ipv6_packet.set_flow_label(0);
             ipv6_packet.set_payload_length((buff.len() + 20 + 8) as u16);
-            ipv6_packet.set_next_header(IpNextHeaderProtocol::new(253)); // TODO: change with BIERin6 draft
+            ipv6_packet.set_next_header(IpNextHeaderProtocol::new(253)); // TODO: change with Bierin6 draft
             ipv6_packet.set_hop_limit(255);
             ipv6_packet.set_source("babe:1::5".parse().unwrap());
             ipv6_packet.set_destination("babe:2::5".parse().unwrap());
