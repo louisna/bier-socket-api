@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
 	bcopy(&dst.sin6_addr, &(iphdr->ip6_dst), 16);
 
     uint32_t *bier_header = (uint32_t *)&buff[40];
-    memset(bier_header, 1, sizeof(bier_header_t));
+    memset(bier_header, 1, sizeof(uint8_t) * 20);
     set_bier_proto(bier_header, 6);
     set_bier_bsl(bier_header, 1);
     set_bitstring(bier_header, 0, 0xffffffff);
