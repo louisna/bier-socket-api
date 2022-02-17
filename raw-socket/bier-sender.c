@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <netinet/ip6.h>
 #include <netinet/udp.h>
-#include "bier.h"
+#include "include/bier.h"
 
 typedef struct
 {
@@ -92,7 +92,9 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    uint8_t buff[40 + 20 + 40 + 8 + 10];
+    size_t bier_header_length = 16;
+
+    uint8_t buff[40 + bier_header_length + 40 + 8 + 10];
     memset(buff, 0, sizeof(buff));
 
     // IPv6 header
@@ -101,7 +103,7 @@ int main(int argc, char *argv[])
     iphdr->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
     iphdr->ip6_nxt  = 253; // Nxt hdr = BIER
     iphdr->ip6_hops = 44;
-    iphdr->ip6_plen = htons(20 + 40 + 8 + 10); // Changed later
+    iphdr->ip6_plen = htons(bier_header_length + 40 + 8 + 10); // Changed later
 
     //IPv6 Source address
     bcopy(&src.sin6_addr, &(iphdr->ip6_src), 16);
@@ -112,12 +114,11 @@ int main(int argc, char *argv[])
     uint32_t *bier_header = (uint32_t *)&buff[40];
     memset(bier_header, 1, sizeof(uint8_t) * 20);
     set_bier_proto(bier_header, 6);
-    set_bier_bsl(bier_header, 1);
-    set_bitstring(bier_header, 0, 0xffffffff);
-    set_bitstring(bier_header, 1, 0xffffffff);
+    set_bier_bsl(bier_header, 0);
+    set_bitstring(bier_header, 0, 0xf);
 
     struct ip6_hdr *iphdr_in;
-    iphdr_in = (struct ip6_hdr *)&buff[60];
+    iphdr_in = (struct ip6_hdr *)&buff[40 + bier_header_length];
     iphdr_in->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
     iphdr_in->ip6_nxt  = 17; // Nxt hdr = UDP
     iphdr_in->ip6_hops = 44;
@@ -129,12 +130,12 @@ int main(int argc, char *argv[])
 	// IPv6 Destination address
 	bcopy(&dst.sin6_addr, &(iphdr_in->ip6_dst), 16);
 
-    struct udphdr *udp = (struct udphdr *)&buff[100];
+    struct udphdr *udp = (struct udphdr *)&buff[40 + bier_header_length + 40];
     udp->uh_dport = 1234;
     udp->uh_sport = 5678;
     udp->uh_ulen = htons(18);
 
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         int err = sendto(socket_fd, buff, sizeof(buff), 0, (struct sockaddr *)&dst, sizeof(dst));
         if (err < 0)
