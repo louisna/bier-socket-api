@@ -1,4 +1,5 @@
 pub mod bier;
+mod dijkstra;
 use bier::{bier::Bier, bier::MutableBierPacket};
 
 use pnet::datalink::{Channel, MacAddr};
