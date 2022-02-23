@@ -1,18 +1,21 @@
-use std::collections::{BinaryHeap, HashSet, HashMap};
-use std::cmp::Ord;
 use core::hash::Hash;
+use std::cmp::Ord;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 pub trait Graph<T: Ord + Hash> {
     fn get_successors(&self, from: &T) -> Vec<(&T, i32)>;
 }
 
-pub fn dijkstra<'a, T: Ord + Hash>(graph: &'a dyn Graph<T>, start: &'a T) -> Option<HashMap<&'a T, Vec<&'a T>>> {
+pub fn dijkstra<'a, T: Ord + Hash>(
+    graph: &'a dyn Graph<T>,
+    start: &'a T,
+) -> Option<HashMap<&'a T, Vec<&'a T>>> {
     let mut heap: BinaryHeap<(i32, (&T, &T))> = BinaryHeap::new();
     let mut visited: HashSet<&T> = HashSet::new();
     let mut cost_to_reach: HashMap<&T, i32> = HashMap::new();
     let mut predecessors: HashMap<&T, Vec<&T>> = HashMap::new();
 
-    heap.push((0, (&start, &start)));
+    heap.push((0, (start, start)));
     while !heap.is_empty() {
         let (cost, (current, from)) = match heap.pop() {
             Some(infos) => infos,
@@ -26,7 +29,7 @@ pub fn dijkstra<'a, T: Ord + Hash>(graph: &'a dyn Graph<T>, start: &'a T) -> Opt
                 Some(optimal_cost) => {
                     if *optimal_cost == cost {
                         // This is ECMP!
-                        predecessors.entry(current).or_insert(Vec::new()).push(from);
+                        predecessors.entry(current).or_insert_with(Vec::new).push(from);
                     }
                 }
             }
@@ -34,12 +37,16 @@ pub fn dijkstra<'a, T: Ord + Hash>(graph: &'a dyn Graph<T>, start: &'a T) -> Opt
             continue;
         }
 
-        visited.insert(&current);
-        predecessors.entry(current).or_insert(Vec::new()).push(from);
+        visited.insert(current);
+        predecessors.entry(current).or_insert_with(Vec::new).push(from);
         cost_to_reach.insert(current, cost);
 
         // Add all neighbours
-        for (neigh, local_cost) in graph.get_successors(current).iter().filter(|(neigh, _)| !visited.contains(neigh)) {
+        for (neigh, local_cost) in graph
+            .get_successors(current)
+            .iter()
+            .filter(|(neigh, _)| !visited.contains(neigh))
+        {
             heap.push((cost - local_cost, (neigh, current)));
         }
     }
@@ -52,9 +59,12 @@ mod tests {
 
     impl Graph<usize> for Vec<Vec<(usize, i32)>> {
         fn get_successors(&self, from: &usize) -> Vec<(&usize, i32)> {
-            self.get(*from).unwrap().iter().map(|(node, cost)| (node, *cost as i32)).collect()
+            self.get(*from)
+                .unwrap()
+                .iter()
+                .map(|(node, cost)| (node, *cost as i32))
+                .collect()
         }
-    
     }
 
     #[test]
