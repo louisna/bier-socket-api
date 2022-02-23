@@ -46,25 +46,16 @@ pub fn dijkstra<'a, T: Ord + Hash>(graph: &'a dyn Graph<T>, start: &'a T) -> Opt
     Some(predecessors)
 }
 
-impl Graph<usize> for Vec<Vec<(usize, i32)>> {
-    fn get_successors(&self, from: &usize) -> Vec<(&usize, i32)> {
-        self.get(*from).unwrap().iter().map(|(node, cost)| (node, *cost as i32)).collect()
-    }
-
-}
-
-fn main() {
-    let mut v: Vec<Vec<(usize, i32)>> = Vec::new();
-    v.push(vec![(1, 1)]);
-    v.push(vec![(0, 1)]);
-    let start: usize = 0;
-    let next_hop = dijkstra(&v, &start).unwrap();
-    println!("{:?}", next_hop);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl Graph<usize> for Vec<Vec<(usize, i32)>> {
+        fn get_successors(&self, from: &usize) -> Vec<(&usize, i32)> {
+            self.get(*from).unwrap().iter().map(|(node, cost)| (node, *cost as i32)).collect()
+        }
+    
+    }
 
     #[test]
     fn test_dijkstra_dummy() {
