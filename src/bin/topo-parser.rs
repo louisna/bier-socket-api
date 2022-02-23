@@ -1,12 +1,11 @@
-use std::io::Write;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as fmtWrite;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Lines};
 use std::fs;
-use std;
+use std::fs::File;
+use std::io::Write;
+use std::io::{BufRead, BufReader, Lines};
 
 struct Node {
     name: String,
@@ -16,7 +15,7 @@ struct Node {
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
-        println!("Usage: {} {} {}", args[0], "<topology_path>", "<output_directory_path>");
+        println!("Usage: {} <topology_path> <output_directory_path>", args[0]);
         return;
     }
 
@@ -24,7 +23,7 @@ fn main() {
         Ok(_) => (),
         Err(e) => {
             println!("Could not create the output directory {}: {}", args[2], e);
-        },
+        }
     }
 
     let file = File::open(&args[1]).expect("Impossible to open the file");
@@ -33,7 +32,7 @@ fn main() {
     bier_config_build(&graph, &args[2]).unwrap();
 }
 
-fn bier_config_build(graph: &Vec<Node>, output_dir: &str) -> std::io::Result<()> {
+fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
     let nb_nodes = (*graph).len(); // The * just to test
     for node in 0..nb_nodes {
         let next_hop = dijkstra(graph, node);
@@ -43,33 +42,34 @@ fn bier_config_build(graph: &Vec<Node>, output_dir: &str) -> std::io::Result<()>
             let next_hop_str = &graph[the_next_hop].name;
             let bfm = next_hop.iter().rev().fold(String::new(), |mut fbm, nh| {
                 if *nh == the_next_hop {
-                    fbm.push_str("1");
+                    fbm.push('1');
                     fbm
                 } else {
-                    if fbm.len() > 0 {
-                        fbm.push_str("0");
+                    if !fbm.is_empty() {
+                        fbm.push('0');
                     }
                     fbm
                 }
             });
-            write!(s, "{} {} {}\n", bfr_id + 1, bfm, next_hop_str).unwrap();
+            writeln!(s, "{} {} {}", bfr_id + 1, bfm, next_hop_str).unwrap();
         }
         println!("Pour node {}:\n{}", graph[node].name, s);
         // Write the configuration file in the output directory
-        let path = std::path::Path::new(output_dir).join(std::path::Path::new(&format!("{}.txt", &graph[node].name)));
+        let path = std::path::Path::new(output_dir)
+            .join(std::path::Path::new(&format!("{}.txt", &graph[node].name)));
         let mut file = match File::create(&path) {
             Ok(f) => f,
             Err(e) => {
                 println!("Impossible to create the file {:?}: {}", path.to_str(), e);
                 panic!();
-            },
+            }
         };
         file.write_all(s.as_bytes())?;
     }
     Ok(())
 }
 
-fn dijkstra(graph: &Vec<Node>, start: usize) -> Vec<usize> {
+fn dijkstra(graph: &[Node], start: usize) -> Vec<usize> {
     let mut heap: BinaryHeap<(i32, (usize, usize))> = BinaryHeap::new();
     let nb_nodes = graph.len();
     let mut visited = vec![false; nb_nodes];
@@ -97,13 +97,13 @@ fn dijkstra(graph: &Vec<Node>, start: usize) -> Vec<usize> {
 
     // Now we have to build the nexthop map for each possible destination T_T
     let mut next_hop = vec![start; nb_nodes];
-    for node in 0..nb_nodes {
+    for (node, node_next_hop) in next_hop.iter_mut().enumerate().take(nb_nodes) {
         // For each node, go in reverse order until we find the nexthop
         let mut runner = node;
         while predecessor[runner] != start {
             runner = predecessor[runner];
         }
-        next_hop[node] = runner;
+        *node_next_hop = runner;
     }
 
     next_hop
@@ -117,7 +117,7 @@ fn parse_file(lines: Lines<BufReader<File>>) -> Vec<Node> {
     // TODO
     for line_unw in lines {
         let line = line_unw.unwrap();
-        let split: Vec<&str> = line.split(" ").collect();
+        let split: Vec<&str> = line.split(' ').collect();
         let a_id: usize = *name_to_id.entry(split[0].to_string()).or_insert(current_id);
         if a_id == current_id {
             current_id += 1;
