@@ -143,4 +143,78 @@ mod tests {
         assert!(nh_unw.get(&3).unwrap().contains(&&1));
         assert!(nh_unw.get(&3).unwrap().contains(&&2));
     }
+
+    #[test]
+    fn test_dijkstra_house() {
+        let mut house: Vec<Vec<(usize, i32)>> = Vec::with_capacity(6);
+        house.push(vec![(1, 1), (2, 10)]);
+        house.push(vec![(0, 1), (2, 1), (3, 1), (4, 10)]);
+        house.push(vec![(0, 10), (1, 1), (4, 1), (5, 1)]);
+        house.push(vec![(1, 1), (5, 1)]);
+        house.push(vec![(1, 10), (2, 1)]);
+        house.push(vec![(2, 1), (3, 1)]);
+
+        let mut spts:Vec<HashMap<usize, Vec<usize>>> = Vec::with_capacity(6);
+        spts.push(HashMap::from([
+            (0, vec![0]),
+            (1, vec![0]),
+            (2, vec![1]),
+            (3, vec![1]),
+            (4, vec![2]),
+            (5, vec![2, 3])
+        ]));
+        spts.push(HashMap::from([
+            (0, vec![1]),
+            (1, vec![1]),
+            (2, vec![1]),
+            (3, vec![1]),
+            (4, vec![2]),
+            (5, vec![2, 3])
+        ]));
+        spts.push(HashMap::from([
+            (0, vec![1]),
+            (1, vec![2]),
+            (2, vec![2]),
+            (3, vec![1, 5]),
+            (4, vec![2]),
+            (5, vec![2])
+        ]));
+        spts.push(HashMap::from([
+            (0, vec![1]),
+            (1, vec![3]),
+            (2, vec![1, 5]),
+            (3, vec![3]),
+            (4, vec![2]),
+            (5, vec![3])
+        ]));
+        spts.push(HashMap::from([
+            (0, vec![1]),
+            (1, vec![2]),
+            (2, vec![4]),
+            (3, vec![1, 5]),
+            (4, vec![4]),
+            (5, vec![2])
+        ]));
+        spts.push(HashMap::from([
+            (0, vec![1]),
+            (1, vec![2, 3]),
+            (2, vec![5]),
+            (3, vec![5]),
+            (4, vec![2]),
+            (5, vec![5])
+        ]));
+
+        for (i, _) in house.iter().enumerate() {
+            let spt = dijkstra(&house, &i);
+            for (node, parents) in spt.unwrap() {
+                let expected_parents = &(&spts)[i][node];
+                // same number of parents
+                assert_eq!(parents.len(), expected_parents.len());
+                // check each parent
+                for parent in parents {
+                    assert!(&expected_parents.contains(parent));
+                }
+            }
+        }
+    }
 }
