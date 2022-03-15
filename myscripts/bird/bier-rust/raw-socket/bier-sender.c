@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
     // Destination of the multicast packet embedded in the BIER packet
     // This must be a multicast address
-    char *destination_address = "::2";
+    char *destination_address = "ff0:babe:cafe::1";
     struct sockaddr_in6 dst;
     memset(&dst, 0, sizeof(struct sockaddr_in6));
     

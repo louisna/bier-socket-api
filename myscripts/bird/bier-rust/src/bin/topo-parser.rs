@@ -80,7 +80,7 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         let mut s = String::new();
 
         // Write name of the node and total number of nodes
-        writeln!(s, "{}\n{}\n{}", &graph[node].ipv6_addr_str, nb_nodes, &graph[node]._id).unwrap();
+        writeln!(s, "{}\n{}\n{}", &graph[node].ipv6_addr_str, nb_nodes, &graph[node]._id + 1).unwrap();
         for bfr_id in 0..nb_nodes {
             let the_next_hop = next_hop[bfr_id];
             let next_hop_str = &graph[the_next_hop].ipv6_addr_str;
