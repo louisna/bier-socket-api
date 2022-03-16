@@ -18,16 +18,12 @@ struct Node {
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 5 {
-        println!("Usage: {} <topology_path> <node_to_id_path> <id_to_ipv6_path> <output_directory_path>", args[0]);
+        println!(
+            "Usage: {} <topology_path> <node_to_id_path> <id_to_ipv6_path> <output_directory_path>",
+            args[0]
+        );
         return;
     }
-
-    /*match fs::create_dir_all(&args[4]) {
-        Ok(_) => (),
-        Err(e) => {
-            println!("Could not create the output directory {}: {}", args[4], e);
-        }
-    }*/
 
     let node_to_id_file = File::open(&args[2]).expect("Impossible to open the node id mapping");
     let node_to_id = parse_node_to_id(node_to_id_file);
@@ -39,8 +35,6 @@ fn main() {
     let reader = BufReader::new(file);
     let graph = parse_file(reader.lines(), node_to_id, id_to_address);
     bier_config_build(&graph, &args[4]).unwrap();
-
-    
 }
 
 fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
@@ -54,7 +48,7 @@ fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
         let id: u32 = split[0].parse::<u32>().unwrap();
         map.insert(name.to_string(), id);
     }
-    
+
     map
 }
 
@@ -69,7 +63,7 @@ fn parse_id_to_ipv6(id_to_ipv6_file: File) -> HashMap<u32, String> {
         let address = split[1];
         map.insert(id, address[..address.len() - 3].to_string());
     }
-    
+
     map
 }
 
@@ -80,7 +74,14 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         let mut s = String::new();
 
         // Write name of the node and total number of nodes
-        writeln!(s, "{}\n{}\n{}", &graph[node].ipv6_addr_str, nb_nodes, &graph[node]._id + 1).unwrap();
+        writeln!(
+            s,
+            "{}\n{}\n{}",
+            &graph[node].ipv6_addr_str,
+            nb_nodes,
+            &graph[node]._id + 1
+        )
+        .unwrap();
         for bfr_id in 0..nb_nodes {
             let the_next_hop = next_hop[bfr_id];
             let next_hop_str = &graph[the_next_hop].ipv6_addr_str;
@@ -156,7 +157,11 @@ fn dijkstra(graph: &[Node], start: usize) -> Vec<usize> {
     next_hop
 }
 
-fn parse_file(lines: Lines<BufReader<File>>, node_to_id: HashMap<String, u32>, id_to_address: HashMap<u32, String>) -> Vec<Node> {
+fn parse_file(
+    lines: Lines<BufReader<File>>,
+    node_to_id: HashMap<String, u32>,
+    id_to_address: HashMap<u32, String>,
+) -> Vec<Node> {
     let mut graph = Vec::new();
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
     let mut current_id: usize = 0;

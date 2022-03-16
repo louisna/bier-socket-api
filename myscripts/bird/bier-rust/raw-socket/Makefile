@@ -2,7 +2,7 @@ CFLAGS=-fPIC -g --std=gnu11
 LDFLAGS=-rdynamic -pie -U_FORTIFY_SOURCE
 INCLUDE_HEADERS_DIRECTORY=-Iheaders
 
-all: bier-sender bier-bfr
+all: bier-sender bier-bfr src/bier.o
 
 bier-sender: bier-sender.c src/bier.o
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^

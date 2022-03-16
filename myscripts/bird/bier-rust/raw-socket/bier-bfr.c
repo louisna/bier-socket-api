@@ -1,18 +1,18 @@
 #include "include/bier.h"
 
-void print_bier_bft(bier_internal_t *bft)
-{
-    char addr_str[INET6_ADDRSTRLEN];
-    for (int i = 0; i < bft->nb_bft_entry; ++i)
-    {
-        memset(addr_str, 0, sizeof(char) * INET6_ADDRSTRLEN);
-        if (inet_ntop(AF_INET6, &bft->bft[i]->bfr_nei_addr, addr_str, INET6_ADDRSTRLEN) == NULL)
-        {
-            perror("inet_ntop");
-        }
-        printf("Entry #%u: bfr id=%u, fw bm=%x, addr: %s\n", i, bft->bft[i]->bfr_id, bft->bft[i]->forwarding_bitmask, addr_str);
-    }
-}
+// void print_bier_bft(bier_internal_t *bft)
+// {
+//     char addr_str[INET6_ADDRSTRLEN];
+//     for (int i = 0; i < bft->nb_bft_entry; ++i)
+//     {
+//         memset(addr_str, 0, sizeof(char) * INET6_ADDRSTRLEN);
+//         if (inet_ntop(AF_INET6, &bft->bft[i]->bfr_nei_addr, addr_str, INET6_ADDRSTRLEN) == NULL)
+//         {
+//             perror("inet_ntop");
+//         }
+//         printf("Entry #%u: bfr id=%u, fw bm=%x, addr: %s\n", i, bft->bft[i]->bfr_id, bft->bft[i]->forwarding_bitmask, addr_str);
+//     }
+// }
 
 void print_buffer(uint8_t *buffer, size_t length)
 {
@@ -97,6 +97,8 @@ int main(int argc, char *argv[])
         perror("bind local");
         exit(EXIT_FAILURE);
     }
+
+    print_bft(bier);
 
     // uint8_t buffer[4096];
     uint16_t buffer_size = 1500;

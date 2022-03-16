@@ -15,11 +15,58 @@ void clean_line_break(char *line)
     }
 }
 
+void print_bitstring_message(char *message, uint64_t *bitstring_ptr, uint32_t bitstring_max_idx)
+{
+    printf("%s ", message);
+    for (uint32_t i = 0; i < bitstring_max_idx; ++i)
+    {
+        printf("%lx ", bitstring_ptr[i]);
+    }
+    printf("\n");
+}
+
+void print_bft(bier_internal_t *bft)
+{
+    printf("=== Summary ===\n");
+    printf("Local BFR ID: %d\n", bft->local_bfr_id);
+    printf("Bitstring length: %d\n", bft->bitstring_length);
+    printf("BFT:\n");
+    uint32_t bitstring_max_idx = bft->bitstring_length / 64;
+    for (int i = 0; i < bft->nb_bft_entry; ++i)
+    {
+        bier_bft_entry_t *bft_entry = bft->bft[i];
+        printf("    #%u: ID=%u, ", i, bft_entry->bfr_id);
+        for (uint32_t j = 0; j < bitstring_max_idx; ++j)
+        {
+            printf("%lx ", bft_entry->forwarding_bitmask[j]);
+        }
+        printf("\n");
+    }
+}
+
 // TODO: to optimize, not have multiple sockaddr_in6 for the same neighbour!
-bier_bft_entry_t *parse_line(char *line_config)
+bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length)
 {
     size_t line_length = strlen(line_config);
     char delim[] = " ";
+
+    bier_bft_entry_t *bier_entry = malloc(sizeof(bier_bft_entry_t));
+    if (!bier_entry)
+    {
+        fprintf(stderr, "Cannot allocate memory for the bier entry\n");
+        perror("malloc");
+        return NULL;
+    }
+    memset(bier_entry, 0, sizeof(bier_bft_entry_t));
+
+    bier_entry->forwarding_bitmask = (uint64_t *)malloc(bitstring_length);
+    if (!bier_entry->forwarding_bitmask)
+    {
+        perror("malloc forwarding bitmask");
+        free(bier_entry);
+        return NULL;
+    }
+    memset(bier_entry->forwarding_bitmask, 0, bitstring_length);
 
     // First is the BFR ID
     char *ptr = strtok(line_config, delim);
@@ -39,11 +86,22 @@ bier_bft_entry_t *parse_line(char *line_config)
     {
         goto empty_string;
     }
-    int forwarding_bitmask = strtoul(ptr, NULL, 2);
-    if (forwarding_bitmask == 0)
+    // Parse the string line a bit at a time because it may be too long to hold in a single number
+    uint64_t bitstring_iter = 0;
+    uint64_t bitstring_word_iter = 0;
+    int word_length = strlen(ptr);
+    for (int i = word_length - 1; i >= 0; --i)
     {
-        fprintf(stderr, "Cannot convert forwarding bitmask: %s\n", ptr);
-        return NULL;
+        if (bitstring_iter >= 64)
+        {
+            bitstring_iter = 0;
+            ++bitstring_word_iter;
+        }
+        char c = ptr[i];
+        if (c == '1')
+        {
+            bier_entry->forwarding_bitmask[bitstring_word_iter] += 1 << bitstring_iter;
+        }
     }
 
     ptr = strtok(NULL, delim);
@@ -63,22 +121,21 @@ bier_bft_entry_t *parse_line(char *line_config)
         return NULL;
     }
 
-    bier_bft_entry_t *bier_entry = malloc(sizeof(bier_bft_entry_t));
-    if (!bier_entry)
-    {
-        fprintf(stderr, "Cannot allocate memory for the bier entry\n");
-        perror("malloc");
-        return NULL;
-    }
-    memset(bier_entry, 0, sizeof(bier_bft_entry_t));
     bier_entry->bfr_id = bfr_id;
-    bier_entry->forwarding_bitmask = forwarding_bitmask;
     bier_entry->bfr_nei_addr = bfr_nei_addr;
 
     return bier_entry;
 
 empty_string:
     fprintf(stderr, "Empty string: not complete line\n");
+    if (bier_entry)
+    {
+        if (bier_entry->forwarding_bitmask)
+        {
+            free(bier_entry->forwarding_bitmask);
+        }
+        free(bier_entry);
+    }
     return NULL;
 }
 
@@ -148,6 +205,20 @@ bier_internal_t *read_config_file(char *config_filepath)
     }
     memset(bier_bft->bft, 0, sizeof(bier_bft_entry_t *) * nb_bft_entry);
 
+    // Make room for the bitstring
+    // According to RFC8296, it can be up to 4096 bits
+    uint32_t bitstring_length = 64;
+    while (bitstring_length < nb_bft_entry)
+    {
+        bitstring_length <<= 1;
+        if (bitstring_length > 4096)
+        {
+            fprintf(stderr, "Too long bitstring length\n");
+            return NULL;
+        }
+    }
+    bier_bft->bitstring_length = bitstring_length;
+
     // The BFR ID of the local router
     if ((readed = getline(&line, &len, file)) == -1)
     {
@@ -166,16 +237,14 @@ bier_internal_t *read_config_file(char *config_filepath)
     while ((readed = getline(&line, &len, file)) != -1)
     {
         printf("Line is %s\n", line);
-        bier_bft_entry_t *bft_entry = parse_line(line);
+        bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length);
         if (!bft_entry)
         {
             printf("ERROR PARSE LINE\n");
             return NULL;
             // goto cleanup_bft_entry;
         }
-        printf("DONC JE LE METS a index: %u\n", bft_entry->bfr_id - 1);
         bier_bft->bft[bft_entry->bfr_id - 1] = bft_entry; // bfr_id is one_indexed
-        printf("LA VALEUR EST: %x\n", bier_bft->bft[bft_entry->bfr_id - 1]->forwarding_bitmask);
     }
     return bier_bft;
 }
@@ -193,6 +262,25 @@ void free_bier_bft(bier_internal_t *bft)
     free(bft);
 }
 
+void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op)
+{
+    uint32_t bitstring_max_idx = bft->bitstring_length / 64;
+    for (uint32_t i = 0; i < bitstring_max_idx; ++i)
+    {
+        uint64_t bitstring = bitstring_ptr[i];
+        uint64_t bitmask = bft->bft[bfr_idx]->forwarding_bitmask[i];
+        switch (op)
+        {
+        case bitwise_u64_and:
+            bitstring &= bitmask;
+            break;
+        case bitwise_u64_and_not:
+            bitstring &= ~bitmask;
+            break;
+        }
+    }
+}
+
 int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft)
 {
     // As specified in RFC 8296, we cannot rely on the `bsl` field of the BIER header
@@ -204,66 +292,67 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
         return -1;
     }
 
-    // Here we can assume that we know the BSL: 0 meaning that the bitstring has a length of 4 bytes
-    uint32_t bitstring_length = 4; // Bytes
-    uint32_t bitstring_idx = 0;    // Offset in the bitstring
-    uint32_t bitstring = get_bitstring(buffer, bitstring_idx);
+    // Remain as general as possible: handle all bitstring length
+    uint32_t bitstring_max_idx = bft->bitstring_length / 64; // In 64 bits words
+    uint32_t bitstring_length = bft->bitstring_length / 8;   // In bytes
 
     // RFC 8279
     uint32_t idx_bfr = 0;
-    printf("LE BITSTRING %u\n", bitstring);
-    for (int i = 0; i < bft->nb_bft_entry; ++i)
+    uint64_t *bitstring_ptr = get_bitstring_ptr(buffer);
+    for (uint32_t bitstring_idx = 0; bitstring_idx < bitstring_max_idx; ++bitstring_idx)
     {
-        printf("Is null %uth entry? %u\n", i, bft->bft[i] == NULL);
-    }
-    while ((bitstring >> idx_bfr) > 0)
-    {
-        if ((bitstring >> idx_bfr) & 1) // The current lowest-order bit is set: this BFER must receive a copy
+        uint64_t bitstring = bitstring_ptr[bitstring_idx];
+        printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
+
+        // Use modulo operation for non-zero uint64_t words
+        uint32_t idx_bfr_word = idx_bfr % 64;
+        while ((bitstring >> idx_bfr_word) > 0)
         {
-            if (idx_bfr == bft->local_bfr_id - 1)
+            if ((bitstring >> idx_bfr_word) & 1) // The current lowest-order bit is set: this BFER must receive a copy
             {
-                fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
-                fprintf(stderr, "Cleaning the bit and doing nothing with it...\n");
-                printf("Params %u %u", idx_bfr, bft->nb_bft_entry);
-                bier_bft_entry_t *bbb = bft->bft[idx_bfr];
-                printf("TEEEST %u", bbb == NULL);
-                bitstring &= ~bft->bft[idx_bfr]->forwarding_bitmask;
-                continue;
+                // Here we use tje true idx_bfr because we do not use it as index for a table
+                if (idx_bfr == bft->local_bfr_id - 1)
+                {
+                    fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
+                    fprintf(stderr, "Cleaning the bit and doing nothing with it...\n");
+                    printf("Params %u %u", idx_bfr, bft->nb_bft_entry);
+                    update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
+                    continue;
+                }
+                fprintf(stderr, "Send a copy to %u\n", idx_bfr + 1);
+
+                uint8_t packet_copy[buffer_length]; // Room for the IPv6 header
+                memset(packet_copy, 0, sizeof(packet_copy));
+
+                uint8_t *bier_header = &packet_copy[0];
+                memcpy(bier_header, buffer, buffer_length);
+
+                uint64_t bitstring_copy[bitstring_max_idx];
+                memcpy(bitstring_copy, bitstring_ptr, sizeof(uint64_t) * bitstring_max_idx);
+                print_bitstring_message("Bitstring value copy is", bitstring_copy, bitstring_max_idx);
+                update_bitstring(bitstring_copy, bft, idx_bfr, bitwise_u64_and);
+                set_bitstring_ptr(packet_copy, bitstring_copy, bitstring_max_idx);
+                print_bitstring_message("Bitstring value copy is now", bitstring_copy, bitstring_max_idx);
+
+                // Send copy
+                int err = 0; // encapsulate_ipv6(packet_copy, buffer_length);
+                if (err < 0)
+                {
+                    return err;
+                }
+
+                bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
+                err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
+                if (err < 0)
+                {
+                    perror("sendto");
+                    return -1;
+                }
+                printf("Sent packet\n");
+                update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
             }
-            printf("COUCOU3\n");
-            fprintf(stderr, "Send a copy to %u\n", idx_bfr + 1);
-
-            // Get the correct entry in the BFT
-            bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
-            uint8_t packet_copy[buffer_length]; // Room for the IPv6 header
-            memset(packet_copy, 0, sizeof(packet_copy));
-
-            uint8_t *bier_header = &packet_copy[0];
-            memcpy(bier_header, buffer, buffer_length);
-
-            uint32_t bitstring_copy = bitstring;
-            printf("BitString value is: %x\n", bitstring_copy);
-            bitstring_copy &= bft_entry->forwarding_bitmask;
-            set_bitstring(bier_header, 0, bitstring_copy);
-            printf("BitString value is now: %x\n", bitstring_copy);
-
-            // Send copy
-            int err = 0; // encapsulate_ipv6(packet_copy, buffer_length);
-            if (err < 0)
-            {
-                return err;
-            }
-
-            err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
-            if (err < 0)
-            {
-                perror("sendto");
-                return -1;
-            }
-            printf("Sent packet\n");
-            bitstring &= ~bft_entry->forwarding_bitmask;
+            ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
         }
-        ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
     }
     return 0;
 }
