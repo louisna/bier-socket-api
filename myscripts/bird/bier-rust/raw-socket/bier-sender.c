@@ -143,16 +143,16 @@ int main(int argc, char *argv[])
         perror("IPv6 destination");
         exit(EXIT_FAILURE);
     }
-    my_packet_t *my_packet = create_bier_dummy_packet(bitstring_arg, &local, &dst);
-    if (!my_packet)
-    {
-        free_bier_bft(bier);
-        close(socket_fd);
-        exit(EXIT_FAILURE);
-    }
+
+    print_bft(bier);
 
     while (1)
     {
+        my_packet_t *my_packet = create_bier_dummy_packet(bitstring_arg, &local, &dst);
+        if (!my_packet)
+        {
+            break;
+        }
         fprintf(stderr, "Sending a new packet\n");
         err = bier_processing(my_packet->packet, my_packet->packet_length, socket_fd, bier);
         if (err < 0)
@@ -161,11 +161,11 @@ int main(int argc, char *argv[])
             break;
         }
         fprintf(stderr, "Sent a new packet!\n");
+        my_packet_free(my_packet);
         sleep(interval);
     }
 
     // Free entire system
-    my_packet_free(my_packet);
     fprintf(stderr, "Closing the program\n");
     free_bier_bft(bier);
     close(socket_fd);

@@ -19,17 +19,17 @@
 
 #define get_bift_id(data) (be32toh(data[0]) >> 12)
 #define get_bitstring(data, bitstring_idx) (htobe64(((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
-#define get_bitstring_ptr(data) ((uint64_t *)(&((uint32_t *)data)[3]))
+#define get_bitstring_ptr(data) ((uint64_t *)(&(data)[12]))
 #define set_bitstring(data, bitstring_idx, bitstring) \
     {                                                 \
         uint32_t *d32 = (uint32_t *)data;             \
-        uint64_t *d64 = (uint64_t *)&data[3];          \
+        uint64_t *d64 = (uint64_t *)&d32[3];          \
         d64[bitstring_idx] = htobe64(bitstring);      \
     }
 #define set_bitstring_ptr(data, bitstring_ptr, bitstring_max_idx)         \
     {                                                                     \
         uint32_t *d32 = (uint32_t *)data;                                 \
-        uint64_t *d64 = (uint64_t *)&data[3];                              \
+        uint64_t *d64 = (uint64_t *)&d32[3];                              \
         memcpy(d64, bitstring_ptr, sizeof(uint64_t) * bitstring_max_idx); \
     }
 #define set_bier_proto(d, proto)    \

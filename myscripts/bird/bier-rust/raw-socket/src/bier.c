@@ -18,7 +18,7 @@ void clean_line_break(char *line)
 void print_bitstring_message(char *message, uint64_t *bitstring_ptr, uint32_t bitstring_max_idx)
 {
     printf("%s ", message);
-    for (uint32_t i = 0; i < bitstring_max_idx; ++i)
+    for (int i = bitstring_max_idx - 1; i >= 0; --i)
     {
         printf("%lx ", bitstring_ptr[i]);
     }
@@ -102,6 +102,7 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length)
         {
             bier_entry->forwarding_bitmask[bitstring_word_iter] += 1 << bitstring_iter;
         }
+        ++bitstring_iter;
     }
 
     ptr = strtok(NULL, delim);
@@ -267,7 +268,7 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
     uint32_t bitstring_max_idx = bft->bitstring_length / 64;
     for (uint32_t i = 0; i < bitstring_max_idx; ++i)
     {
-        uint64_t bitstring = bitstring_ptr[i];
+        uint64_t bitstring = be64toh(bitstring_ptr[i]);
         uint64_t bitmask = bft->bft[bfr_idx]->forwarding_bitmask[i];
         switch (op)
         {
@@ -278,6 +279,7 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
             bitstring &= ~bitmask;
             break;
         }
+        bitstring_ptr[i] = htobe64(bitstring);
     }
 }
 
@@ -299,10 +301,10 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
     // RFC 8279
     uint32_t idx_bfr = 0;
     uint64_t *bitstring_ptr = get_bitstring_ptr(buffer);
-    for (uint32_t bitstring_idx = 0; bitstring_idx < bitstring_max_idx; ++bitstring_idx)
+    for (int bitstring_idx = bitstring_max_idx - 1; bitstring_idx >= 0; --bitstring_idx)
     {
-        uint64_t bitstring = bitstring_ptr[bitstring_idx];
-        printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
+        uint64_t bitstring = be64toh(bitstring_ptr[bitstring_idx]);
+        // printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
 
         // Use modulo operation for non-zero uint64_t words
         uint32_t idx_bfr_word = idx_bfr % 64;
@@ -315,8 +317,10 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
                 {
                     fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
                     fprintf(stderr, "Cleaning the bit and doing nothing with it...\n");
-                    printf("Params %u %u", idx_bfr, bft->nb_bft_entry);
                     update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
+                    bitstring = be64toh(bitstring_ptr[bitstring_idx]);
+                    ++idx_bfr;
+                    idx_bfr_word = idx_bfr % 64;
                     continue;
                 }
                 fprintf(stderr, "Send a copy to %u\n", idx_bfr + 1);
@@ -329,20 +333,14 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
 
                 uint64_t bitstring_copy[bitstring_max_idx];
                 memcpy(bitstring_copy, bitstring_ptr, sizeof(uint64_t) * bitstring_max_idx);
-                print_bitstring_message("Bitstring value copy is", bitstring_copy, bitstring_max_idx);
+                // print_bitstring_message("Bitstring value copy is", bitstring_copy, bitstring_max_idx);
                 update_bitstring(bitstring_copy, bft, idx_bfr, bitwise_u64_and);
                 set_bitstring_ptr(packet_copy, bitstring_copy, bitstring_max_idx);
-                print_bitstring_message("Bitstring value copy is now", bitstring_copy, bitstring_max_idx);
+                // print_bitstring_message("Bitstring value copy is now", bitstring_copy, bitstring_max_idx);
 
                 // Send copy
-                int err = 0; // encapsulate_ipv6(packet_copy, buffer_length);
-                if (err < 0)
-                {
-                    return err;
-                }
-
                 bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
-                err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
+                int err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");
@@ -350,8 +348,11 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
                 }
                 printf("Sent packet\n");
                 update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
+                bitstring = be64toh(bitstring_ptr[bitstring_idx]);
+                // printf("Bitstring is now %lu\n", bitstring);
             }
             ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
+            idx_bfr_word = idx_bfr % 64;
         }
     }
     return 0;
