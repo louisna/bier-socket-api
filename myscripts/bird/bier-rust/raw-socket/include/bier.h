@@ -65,7 +65,7 @@ typedef struct
     int local_bfr_id;
     struct in6_addr local;
     int nb_bft_entry;
-    uint32_t bitstring_length;
+    uint32_t bitstring_length; // In bits
     int socket;
     bier_bft_entry_t **bft;
 } bier_internal_t;

@@ -308,6 +308,12 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
     uint64_t *bitstring_ptr = get_bitstring_ptr(buffer);
     for (int bitstring_idx = bitstring_max_idx - 1; bitstring_idx >= 0; --bitstring_idx)
     {
+        if (idx_bfr >= bft->nb_bft_entry)
+        {
+            fprintf(stderr, "There seems to be an error. The packet bitstring contains a bit set to true that is not mapped to a known BFR in the BFT.\n");
+            return -1;
+
+        }
         uint64_t bitstring = be64toh(bitstring_ptr[bitstring_idx]);
         // printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
 
@@ -315,6 +321,12 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
         uint32_t idx_bfr_word = idx_bfr % 64;
         while ((bitstring >> idx_bfr_word) > 0)
         {
+            if (idx_bfr >= bft->nb_bft_entry)
+            {
+                fprintf(stderr, "There seems to be an error. The packet bitstring contains a bit set to true that is not mapped to a known BFR in the BFT.\n");
+                return -1;
+
+            }
             if ((bitstring >> idx_bfr_word) & 1) // The current lowest-order bit is set: this BFER must receive a copy
             {
                 // Here we use tje true idx_bfr because we do not use it as index for a table
