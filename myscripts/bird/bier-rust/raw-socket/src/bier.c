@@ -44,7 +44,6 @@ void print_bft(bier_internal_t *bft)
     }
 }
 
-// TODO: to optimize, not have multiple sockaddr_in6 for the same neighbour!
 bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length)
 {
     size_t line_length = strlen(line_config);
@@ -140,6 +139,19 @@ empty_string:
     return NULL;
 }
 
+void free_bier_bft(bier_internal_t *bft)
+{
+    for (int i = 0; i < bft->nb_bft_entry; ++i)
+    {
+        if (bft->bft[i])
+        {
+            free(bft->bft[i]);
+        }
+    }
+    free(bft->bft);
+    free(bft);
+}
+
 // TODO: multiple checks:
 //   * do we read exactly once each entry?
 //   * do we have all entries?
@@ -169,7 +181,7 @@ bier_internal_t *read_config_file(char *config_filepath)
     if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get local address line\n");
-        // goto free_bft;
+        free(bier_bft);
         return NULL;
     }
 
@@ -180,29 +192,30 @@ bier_internal_t *read_config_file(char *config_filepath)
         fprintf(stderr, "Cannot convert the local address: %s\n", line);
         free(bier_bft);
         return NULL;
-        // goto free_bft;
     }
     if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get number of entries line\n");
+        free(bier_bft);
         return NULL;
-        // goto free_bft;
     }
     int nb_bft_entry = atoi(line);
     if (nb_bft_entry == 0)
     {
         fprintf(stderr, "Cannot convert to nb bft entry: %s\n", line);
+        free(bier_bft);
         return NULL;
     }
 
     bier_bft->nb_bft_entry = nb_bft_entry;
+
     // We can create the array of entries for the BFT
     bier_bft->bft = malloc(sizeof(bier_bft_entry_t *) * nb_bft_entry);
     if (!bier_bft->bft)
     {
         fprintf(stderr, "Cannot malloc the bft!\n");
+        free(bier_bft);
         return NULL;
-        // goto free_bft;
     }
     memset(bier_bft->bft, 0, sizeof(bier_bft_entry_t *) * nb_bft_entry);
 
@@ -215,6 +228,8 @@ bier_internal_t *read_config_file(char *config_filepath)
         if (bitstring_length > 4096)
         {
             fprintf(stderr, "Too long bitstring length\n");
+            free(bier_bft->bft);
+            free(bier_bft);
             return NULL;
         }
     }
@@ -224,12 +239,16 @@ bier_internal_t *read_config_file(char *config_filepath)
     if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get the local BFR ID\n");
-        return NULL; // goto free_bft;
+        free(bier_bft->bft);
+        free(bier_bft);
+        return NULL;
     }
     int local_bfr_id = atoi(line);
     if (local_bfr_id == 0)
     {
         fprintf(stderr, "Cannot convert to local BFR ID: %s\n", line);
+        free(bier_bft->bft);
+        free(bier_bft);
         return NULL;
     }
     bier_bft->local_bfr_id = local_bfr_id;
@@ -237,30 +256,16 @@ bier_internal_t *read_config_file(char *config_filepath)
     // Fill in the BFT with the remaining of the file
     while ((readed = getline(&line, &len, file)) != -1)
     {
-        printf("Line is %s\n", line);
         bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length);
         if (!bft_entry)
         {
-            printf("ERROR PARSE LINE\n");
+            fprintf(stderr, "Cannot parse line: %s\n", line);
+            free_bier_bft(bier_bft);
             return NULL;
-            // goto cleanup_bft_entry;
         }
         bier_bft->bft[bft_entry->bfr_id - 1] = bft_entry; // bfr_id is one_indexed
     }
     return bier_bft;
-}
-
-void free_bier_bft(bier_internal_t *bft)
-{
-    for (int i = 0; i < bft->nb_bft_entry; ++i)
-    {
-        if (bft->bft[i])
-        {
-            free(bft->bft[i]);
-        }
-    }
-    free(bft->bft);
-    free(bft);
 }
 
 void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op)
@@ -346,7 +351,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
                     perror("sendto");
                     return -1;
                 }
-                printf("Sent packet\n");
+                fprintf(stderr, "Sent packet\n");
                 update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
                 bitstring = be64toh(bitstring_ptr[bitstring_idx]);
                 // printf("Bitstring is now %lu\n", bitstring);

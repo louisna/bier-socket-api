@@ -65,7 +65,7 @@ my_packet_t *create_bier_dummy_packet(uint64_t bitstring, struct sockaddr_in6 *s
     ipv6_header->ip6_hops = 44;
     ipv6_header->ip6_plen = htons(8 + 10); // Changed later
 
-    bcopy(&src->sin6_addr, &(ipv6_header->ip6_src), 16); // TODO: replace 16 by addrlen
+    bcopy(&src->sin6_addr, &(ipv6_header->ip6_src), 16);
     bcopy(&dst->sin6_addr, &(ipv6_header->ip6_dst), 16);
 
     // UDP Header
@@ -158,6 +158,7 @@ int main(int argc, char *argv[])
         if (err < 0)
         {
             fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");
+            my_packet_free(my_packet);
             break;
         }
         fprintf(stderr, "Sent a new packet!\n");
