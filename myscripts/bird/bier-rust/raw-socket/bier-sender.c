@@ -1,22 +1,5 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <strings.h>
-#include <string.h>
-
-#include <sys/types.h>
-#include <ifaddrs.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/ip6.h>
-#include <netinet/udp.h>
 #include "include/bier.h"
-
-typedef struct
-{
-    uint8_t *packet;
-    uint32_t packet_length;
-} my_packet_t;
+#include "include/bier-sender.h"
 
 void my_packet_free(my_packet_t *my_packet)
 {
@@ -24,14 +7,53 @@ void my_packet_free(my_packet_t *my_packet)
     free(my_packet);
 }
 
-my_packet_t *create_bier_dummy_packet(uint64_t bitstring, struct sockaddr_in6 *src, struct sockaddr_in6 *dst)
+my_packet_t *encap_bier_packet(uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto, const uint32_t payload_length, uint8_t *payload)
 {
     const uint32_t bier_header_length = 12;
-    const uint32_t bier_bitstring_length = 64 / 8;
+    const uint32_t bitstring_length_bytes = bitstring_length / 8;
+    const uint32_t bier_bsl = log2(bitstring_length) - 5;
+    const uint32_t packet_total_length = bier_header_length + bitstring_length_bytes + payload_length;
+
+    my_packet_t *my_packet = (my_packet_t *)malloc(sizeof(my_packet_t));
+    if (!my_packet)
+    {
+        perror("malloc my_packet");
+        return NULL;
+    }
+
+    my_packet->packet_length = packet_total_length;
+    my_packet->packet = (uint8_t *)malloc(sizeof(uint8_t) * packet_total_length);
+    if (!my_packet->packet)
+    {
+        perror("malloc packet");
+        free(my_packet);
+        return NULL;
+    }
+    memset(my_packet->packet, 0, sizeof(uint8_t) * packet_total_length);
+
+    uint8_t *bier_header = my_packet->packet;
+    // TODO: remove this memset and replace by true operations
+    memset(bier_header, 1, sizeof(uint8_t) * bier_header_length);
+    bier_header[0] = 0xff;
+    set_bier_proto(bier_header, bier_proto);
+    for (uint16_t i = 0; i < bitstring_length_bytes; ++i)
+    {
+        set_bitstring(bier_header, i, bitstring[i]);
+    }
+    set_bier_bsl(bier_header, bier_bsl);
+
+    // Copy the payload of the packet inside the packet buffer
+    uint8_t *packet_payload = (uint8_t *)&my_packet->packet[bier_header_length + bitstring_length_bytes];
+    memcpy(packet_payload, payload, sizeof(uint8_t) * payload_length);
+
+    return my_packet;
+}
+
+my_packet_t *create_bier_ipv6_from_payload(uint64_t *bitstring, const uint16_t bitstring_length, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, uint8_t *payload)
+{
     const uint32_t ipv6_header_length = 40;
     const uint32_t udp_header_length = 8;
-    const uint32_t payload_length = 10;
-    const uint32_t packet_total_length = bier_header_length + bier_bitstring_length + ipv6_header_length + udp_header_length + payload_length;
+    const uint32_t packet_total_length = ipv6_header_length + udp_header_length + payload_length;
 
     uint8_t *packet = (uint8_t *)malloc(sizeof(uint8_t) * packet_total_length);
     if (!packet)
@@ -41,45 +63,33 @@ my_packet_t *create_bier_dummy_packet(uint64_t bitstring, struct sockaddr_in6 *s
     }
     memset(packet, 0, sizeof(uint8_t) * packet_total_length);
 
-    my_packet_t *my_packet = (my_packet_t *)malloc(sizeof(my_packet));
-    if (!my_packet)
-    {
-        free(packet);
-        perror("my_packet_t");
-        return NULL;
-    }
-
-    // BIER Header
-    uint8_t *bier_header = packet;
-    memset(bier_header, 1, sizeof(uint8_t) * bier_header_length);
-    bier_header[0] = 0xff;
-    set_bier_proto(bier_header, 6);
-    set_bier_bsl(bier_header, 1);
-    set_bitstring(bier_header, 0, bitstring & 0xff);
-    set_bitstring(bier_header, 1, bitstring >> 32);
-
     // Encapsulated IPv6 Header
-    struct ip6_hdr *ipv6_header = (struct ip6_hdr *)&packet[bier_header_length + bier_bitstring_length];
+    struct ip6_hdr *ipv6_header = (struct ip6_hdr *)packet;
     ipv6_header->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
     ipv6_header->ip6_nxt = 17; // Nxt hdr = UDP
     ipv6_header->ip6_hops = 44;
-    ipv6_header->ip6_plen = htons(8 + 10); // Changed later
+    ipv6_header->ip6_plen = htons(8 + payload_length); // Changed later
 
-    bcopy(&src->sin6_addr, &(ipv6_header->ip6_src), 16);
-    bcopy(&dst->sin6_addr, &(ipv6_header->ip6_dst), 16);
+    memcpy(&mc_src->sin6_addr, &(ipv6_header->ip6_src), 16);
+    memcpy(&mc_dst->sin6_addr, &(ipv6_header->ip6_dst), 16);
 
     // UDP Header
-    struct udphdr *udp_header = (struct udphdr *)&packet[bier_header_length + bier_bitstring_length + ipv6_header_length];
+    struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];
     udp_header->uh_dport = 1234;
     udp_header->uh_sport = 5678;
     udp_header->uh_ulen = htons(udp_header_length + payload_length);
 
     // Payload
-    uint8_t *payload = &packet[bier_header_length + bier_bitstring_length + ipv6_header_length + udp_header_length];
-    memset(payload, 0xc, sizeof(uint8_t) * payload_length);
+    uint8_t *packet_payload = &packet[ipv6_header_length + udp_header_length];
+    memcpy(packet_payload, payload, sizeof(uint8_t) * payload_length);
 
-    my_packet->packet = packet;
-    my_packet->packet_length = packet_total_length;
+    my_packet_t *my_packet = encap_bier_packet(bitstring, bitstring_length, 6, packet_total_length, packet);
+    if (!my_packet)
+    {
+        return NULL;
+    }
+
+    free(packet);
     return my_packet;
 }
 
@@ -145,10 +155,13 @@ int main(int argc, char *argv[])
     }
 
     print_bft(bier);
+    char dummy_payload[10];
+    memset(dummy_payload, 1, sizeof(dummy_payload));
+    uint64_t bitstring = 0xf;
 
     while (1)
     {
-        my_packet_t *my_packet = create_bier_dummy_packet(bitstring_arg, &local, &dst);
+        my_packet_t *my_packet = create_bier_ipv6_from_payload(&bitstring, 64, &local, &dst, sizeof(dummy_payload), dummy_payload);
         if (!my_packet)
         {
             break;

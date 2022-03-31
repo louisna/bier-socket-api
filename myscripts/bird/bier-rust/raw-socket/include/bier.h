@@ -1,3 +1,6 @@
+#ifndef BIER_H
+#define BIER_H
+
 #include <stdint.h>
 #ifndef __APPLE__
 #include <endian.h>
@@ -74,3 +77,5 @@ bier_internal_t *read_config_file(char *config_filepath);
 void free_bier_bft(bier_internal_t *bft);
 int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft);
 void print_bft(bier_internal_t *bft);
+
+#endif // BIER_H
