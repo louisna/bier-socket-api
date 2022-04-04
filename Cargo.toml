@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pnet = "0.29.0"
-pnet_macros = "0.29.0"
-pnet_macros_support = "0.29.0"
-libc = "0.2.115"
+# pnet = "0.29.0"
+# pnet_macros = "0.29.0"
+# pnet_macros_support = "0.29.0"
+# libc = "0.2.115"

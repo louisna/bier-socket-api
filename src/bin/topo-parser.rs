@@ -18,15 +18,11 @@ struct Node {
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 5 {
-        println!("Usage: {} <topology_path> <node_to_id_path> <id_to_ipv6_path> <output_directory_path>", args[0]);
+        println!(
+            "Usage: {} <topology_path> <node_to_id_path> <id_to_ipv6_path> <output_directory_path>",
+            args[0]
+        );
         return;
-    }
-
-    match fs::create_dir_all(&args[4]) {
-        Ok(_) => (),
-        Err(e) => {
-            println!("Could not create the output directory {}: {}", args[4], e);
-        }
     }
 
     let node_to_id_file = File::open(&args[2]).expect("Impossible to open the node id mapping");
@@ -39,8 +35,6 @@ fn main() {
     let reader = BufReader::new(file);
     let graph = parse_file(reader.lines(), node_to_id, id_to_address);
     bier_config_build(&graph, &args[4]).unwrap();
-
-    
 }
 
 fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
@@ -50,11 +44,11 @@ fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
     for line_unw in reader.lines() {
         let line = line_unw.unwrap();
         let split: Vec<&str> = line.split(' ').collect();
-        let name = split[0];
-        let id: u32 = split[1].parse::<u32>().unwrap();
+        let name = split[1];
+        let id: u32 = split[0].parse::<u32>().unwrap();
         map.insert(name.to_string(), id);
     }
-    
+
     map
 }
 
@@ -67,9 +61,9 @@ fn parse_id_to_ipv6(id_to_ipv6_file: File) -> HashMap<u32, String> {
         let split: Vec<&str> = line.split(' ').collect();
         let id: u32 = split[0].parse::<u32>().unwrap();
         let address = split[1];
-        map.insert(id, address.to_string());
+        map.insert(id, address[..address.len() - 3].to_string());
     }
-    
+
     map
 }
 
@@ -80,7 +74,14 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         let mut s = String::new();
 
         // Write name of the node and total number of nodes
-        writeln!(s, "{}\n{}", &graph[node].name, nb_nodes).unwrap();
+        writeln!(
+            s,
+            "{}\n{}\n{}",
+            &graph[node].ipv6_addr_str,
+            nb_nodes,
+            &graph[node]._id + 1
+        )
+        .unwrap();
         for bfr_id in 0..nb_nodes {
             let the_next_hop = next_hop[bfr_id];
             let next_hop_str = &graph[the_next_hop].ipv6_addr_str;
@@ -98,9 +99,12 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
             writeln!(s, "{} {} {}", bfr_id + 1, bfm, next_hop_str).unwrap();
         }
         println!("Pour node {}:\n{}", graph[node].name, s);
-        // Write the configuration file in the output directory
-        let path = std::path::Path::new(output_dir)
-            .join(std::path::Path::new(&format!("{}.txt", &graph[node].name)));
+        println!("L'id du node {}", graph[node]._id);
+        //let path = std::path::Path::new(&format!("files-{}", graph[node]._id))
+        //    .join(std::path::Path::new(&format!("bier-config-{}.txt", graph[node]._id)));
+        let pathname = format!("bier-config-{}.txt", graph[node]._id);
+        let path = std::path::Path::new(&pathname);
+        println!("Le path est {:?}", path);
         let mut file = match File::create(&path) {
             Ok(f) => f,
             Err(e) => {
@@ -153,7 +157,11 @@ fn dijkstra(graph: &[Node], start: usize) -> Vec<usize> {
     next_hop
 }
 
-fn parse_file(lines: Lines<BufReader<File>>, node_to_id: HashMap<String, u32>, id_to_address: HashMap<u32, String>) -> Vec<Node> {
+fn parse_file(
+    lines: Lines<BufReader<File>>,
+    node_to_id: HashMap<String, u32>,
+    id_to_address: HashMap<u32, String>,
+) -> Vec<Node> {
     let mut graph = Vec::new();
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
     let mut current_id: usize = 0;
