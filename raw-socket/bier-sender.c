@@ -1,6 +1,14 @@
 #include "include/bier.h"
 #include "include/bier-sender.h"
 
+/**
+ * @brief Creates a BIER header with every field set to 0 except the bitstring, the BSL and the proto fields
+ * 
+ * @param bitstring the bitstring of the packet, as an array of size *bitstring_length* of uint64_t values
+ * @param bitstring_length the length of the *bitstring* array, in uint64_t unit
+ * @param bier_proto the value of the "proto" field of the BIER header (i.e., the next header)
+ * @return bier_header_t* structure containing the ->_packet of ->header_length bytes (including the bitstring)
+ */
 bier_header_t *init_bier_header(uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto)
 {
     bier_header_t *bh = (bier_header_t *)malloc(sizeof(bier_header_t));
@@ -35,17 +43,36 @@ bier_header_t *init_bier_header(uint64_t *bitstring, const uint32_t bitstring_le
     return bh;
 }
 
+/**
+ * @brief Release the memory associated with the BIER header
+ * 
+ * @param bh pointer to the BIER header structure
+ */
 void release_bier_header(bier_header_t *bh)
 {
     free(bh->_header);
     free(bh);
 }
 
+/**
+ * @brief Set the bh proto field of the BIER header
+ * 
+ * @param bh BIER header pointer
+ * @param proto proto value
+ * @return ** void /
+ */
 void set_bh_proto(bier_header_t *bh, uint8_t proto)
 {
     set_bier_proto(bh->_header, proto);
 }
 
+/**
+ * @brief Update the bitstring value of the BIER header. /!\ Cannot change the bitstring length, only the values
+ * 
+ * @param bh BIER header pointer
+ * @param bitstring_length the current length of the bitstring of the BIER header
+ * @param bitstring array of uint64_t values containing the bitstring, array of length *bitstring_length* uint64_t elements
+ */
 void update_bh_bitstring(bier_header_t *bh, const uint32_t bitstring_length, uint64_t *bitstring)
 {
     for (uint16_t i = 0; i < bitstring_length / 8; ++i)
@@ -54,12 +81,25 @@ void update_bh_bitstring(bier_header_t *bh, const uint32_t bitstring_length, uin
     }
 }
 
+/**
+ * @brief Release the memory associated with the my_packet_t structure
+ * 
+ * @param my_packet pointer to the custom packet
+ */
 void my_packet_free(my_packet_t *my_packet)
 {
     free(my_packet->packet);
     free(my_packet);
 }
 
+/**
+ * @brief Encapsulate the payload (may be a packet) given by *payload* of length *payload_length* in a BIER header given by *bh*
+ * 
+ * @param bh the BIER header structure
+ * @param payload_length the length of the payload to encapsulate
+ * @param payload the payload
+ * @return my_packet_t* a new custom packet encapsulated in a BIER header
+ */
 my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length, uint8_t *payload)
 {
     const uint32_t packet_total_length = bh->header_length + payload_length;
@@ -91,6 +131,17 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
     return my_packet;
 }
 
+/**
+ * @brief Create a dummy packet from an application payload. The payload is encapsulated in a UDP header within an IPv6 header,
+ * and finally in a BIER header given by *bh*. The IPv6 source/destination addresses are given by *mc_src* and *mc_dst* respectively
+ * 
+ * @param bh pointer to the BIER header structure
+ * @param mc_src IPv6 multicast source of the encapsulated IPv6 header
+ * @param mc_dst IPv6 multicast destination of the encapsulared IPv6 header
+ * @param payload_length length of the application payload to encapsulate
+ * @param payload application payload
+ * @return my_packet_t* pointer to the custom packet
+ */
 my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, uint8_t *payload)
 {
     const uint32_t ipv6_header_length = 40;
@@ -133,6 +184,15 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
     return my_packet;
 }
 
+/**
+ * @brief This is an example of a function that handles a BIER packet whose destination is the local router processing it.
+ * It just transmits the content of the BIER packet to the socket given in argument
+ * 
+ * @param bier_packet BIER packet buffer. The BIER header is still in the buffer in case the application needs to retrieve information from it
+ * @param packet_length the length of the packet buffer
+ * @param bier_header_length the length of the BIER header (at the beginning of the packet)
+ * @param args additional arguments given to the function. The function is responsible to know how to parse these arguments
+ */
 void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args)
 {
     raw_socket_arg_t *raw_args = (raw_socket_arg_t *)args;
@@ -195,7 +255,7 @@ int main(int argc, char *argv[])
     // This must be a multicast address
     char *destination_address = "ff0:babe:cafe::1";
     struct sockaddr_in6 dst = {};
-    
+
     err = inet_pton(AF_INET6, destination_address, &dst.sin6_addr.s6_addr);
     if (err == 0)
     {
