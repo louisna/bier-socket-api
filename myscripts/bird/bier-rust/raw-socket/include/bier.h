@@ -73,9 +73,22 @@ typedef struct
     bier_bft_entry_t **bft;
 } bier_internal_t;
 
+typedef struct
+{
+    void *args;
+    void (*local_processing_function)(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
+} bier_local_processing_t;
+
+// TODO: this structure will go to the application file
+typedef struct
+{
+    int raw_socket;
+    struct sockaddr_in6 local;
+} raw_socket_arg_t;
+
 bier_internal_t *read_config_file(char *config_filepath);
 void free_bier_bft(bier_internal_t *bft);
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft);
+int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 void print_bft(bier_internal_t *bft);
 
 #endif // BIER_H

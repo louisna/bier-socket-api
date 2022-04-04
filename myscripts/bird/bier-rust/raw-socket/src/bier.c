@@ -288,7 +288,7 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
     }
 }
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft)
+int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
 {
     // As specified in RFC 8296, we cannot rely on the `bsl` field of the BIER header
     // but we must know with the bift_id the true BSL
@@ -333,7 +333,8 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
                 if (idx_bfr == bft->local_bfr_id - 1)
                 {
                     fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
-                    fprintf(stderr, "Cleaning the bit and doing nothing with it...\n");
+                    fprintf(stderr, "Calling local processing function\n");
+                    bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bitstring_length, bier_local_processing->args);
                     update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
                     bitstring = be64toh(bitstring_ptr[bitstring_idx]);
                     ++idx_bfr;
