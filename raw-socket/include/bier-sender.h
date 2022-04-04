@@ -12,8 +12,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/ip6.h>
-#include <netinet/udp.h>
 #include <math.h>
+#include "bier.h"
 
 typedef struct
 {
@@ -34,6 +34,7 @@ void update_bh_bitstring(bier_header_t *bh, const uint32_t bitstring_length, uin
 
 void my_packet_free(my_packet_t *pkt);
 my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length, uint8_t *payload);
-my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, uint8_t *payload);
+my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, const uint8_t *payload);
+int send_payload(bier_internal_t *bier, uint64_t bitstring, const void* payload, size_t payload_length);
 
 #endif // BIER_SENDER_H

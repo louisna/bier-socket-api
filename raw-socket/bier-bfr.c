@@ -13,7 +13,7 @@ void print_buffer(uint8_t *buffer, size_t length)
     printf("\n");
 }
 
-void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args)
+/*void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args)
 {
     raw_socket_arg_t *raw_args = (raw_socket_arg_t *)args;
     const uint8_t *ipv6_packet = &bier_packet[bier_header_length];
@@ -22,7 +22,7 @@ void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length
     {
         perror("Cannot send using raw socket... ignoring");
     }
-}
+}*/
 
 int main(int argc, char *argv[])
 {
@@ -62,13 +62,17 @@ int main(int argc, char *argv[])
     // Local router behaviour
     raw_socket_arg_t raw_args;
     memset(&raw_args, 0, sizeof(raw_socket_arg_t));
-    char *local_addr = "::1"; // Send to loopback the packets belonging to the router
+    /*char *local_addr = "::1"; // Send to loopback the packets belonging to the router
     memset(&raw_args.local, 0, sizeof(struct sockaddr_in6));
+
     if (inet_pton(AF_INET6, local_addr, &raw_args.local.sin6_addr.s6_addr) == 0)
     {
         perror("loopback address");
         exit(EXIT_FAILURE);
-    }
+    }*/
+    raw_args.local.sin6_family = AF_INET6;
+    memcpy(&raw_args.local.sin6_addr, &bier->local, 16);
+
     // TODO: able to change udp port (src, dst)
     int local_socket_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
     if (local_socket_fd < 0)

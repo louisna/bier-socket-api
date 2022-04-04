@@ -19,6 +19,7 @@
 #include <netinet/ip6.h>
 #include <unistd.h>
 #include <signal.h>
+#include <netinet/udp.h>
 
 #define get_bift_id(data) (be32toh(data[0]) >> 12)
 #define get_bitstring(data, bitstring_idx) (htobe64(((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
@@ -90,5 +91,7 @@ bier_internal_t *read_config_file(char *config_filepath);
 void free_bier_bft(bier_internal_t *bft);
 int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 void print_bft(bier_internal_t *bft);
+void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
+uint16_t udp_checksum (const void *buff, size_t len, struct in6_addr *src_addr, struct in6_addr *dest_addr);
 
 #endif // BIER_H
