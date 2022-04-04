@@ -96,7 +96,6 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
     const uint32_t ipv6_header_length = 40;
     const uint32_t udp_header_length = 8;
     const uint32_t packet_total_length = ipv6_header_length + udp_header_length + payload_length;
-    printf("1 %u\n", packet_total_length);
     uint8_t *packet = (uint8_t *)malloc(sizeof(uint8_t) * packet_total_length);
     if (!packet)
     {
@@ -104,7 +103,6 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
         return NULL;
     }
     memset(packet, 0, sizeof(uint8_t) * packet_total_length);
-    printf("2\n");
     // Encapsulated IPv6 Header
     struct ip6_hdr *ipv6_header = (struct ip6_hdr *)packet;
     ipv6_header->ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
@@ -112,27 +110,24 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
     ipv6_header->ip6_hops = 44;
     ipv6_header->ip6_plen = htons(8 + payload_length); // Changed later
 
-    memcpy(&mc_src->sin6_addr, &(ipv6_header->ip6_src), 16);
-    memcpy(&mc_dst->sin6_addr, &(ipv6_header->ip6_dst), 16);
+    memcpy(&(ipv6_header->ip6_src), &mc_src->sin6_addr, 16);
+    memcpy(&(ipv6_header->ip6_dst), &mc_dst->sin6_addr, 16);
 
     // UDP Header
     struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];
     udp_header->uh_dport = 1234;
     udp_header->uh_sport = 5678;
     udp_header->uh_ulen = htons(udp_header_length + payload_length);
-    printf("3\n");
 
     // Payload
     uint8_t *packet_payload = &packet[ipv6_header_length + udp_header_length];
     memcpy(packet_payload, payload, sizeof(uint8_t) * payload_length);
 
-    printf("Before encap bier packet\n");
     my_packet_t *my_packet = encap_bier_packet(bh, packet_total_length, packet);
     if (!my_packet)
     {
         return NULL;
     }
-    printf("After encap bier packet\n");
 
     free(packet);
     return my_packet;
@@ -244,13 +239,11 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        printf("Before bier payload\n");
         my_packet_t *my_packet = create_bier_ipv6_from_payload(bh, &local, &dst, sizeof(dummy_payload), dummy_payload);
         if (!my_packet)
         {
             break;
         }
-        printf("After bier payload\n");
         fprintf(stderr, "Sending a new packet\n");
         err = bier_processing(my_packet->packet, my_packet->packet_length, socket_fd, bier, &local_bier_processing);
         if (err < 0)
