@@ -66,7 +66,7 @@ typedef struct
 typedef struct
 {
     int local_bfr_id;
-    struct in6_addr local;
+    struct sockaddr_in6 local;
     int nb_bft_entry;
     uint32_t bitstring_length; // In bits
     int socket;
@@ -108,12 +108,11 @@ void free_bier_bft(bier_internal_t *bft);
  * 
  * @param buffer pointer to the buffer - should start with the BIER header
  * @param buffer_length length of the *buffer*
- * @param socket_fd socket fd that the router uses to forward the BIER packets
  * @param bft the BIER Forwarding Table
  * @param bier_local_processing structure containing the function and additional arguments to handle a local packet
  * @return int error indication state
  */
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 void print_bft(bier_internal_t *bft);
 
 #endif // BIER_H

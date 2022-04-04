@@ -149,6 +149,10 @@ void free_bier_bft(bier_internal_t *bft)
         }
     }
     free(bft->bft);
+    if (bft->socket >= 0)
+    {
+        close(bft->socket);
+    }
     free(bft);
 }
 
@@ -172,6 +176,7 @@ bier_internal_t *read_config_file(char *config_filepath)
         return NULL;
     }
     memset(bier_bft, 0, sizeof(bier_internal_t));
+    bier_bft->socket = -1;
 
     ssize_t readed = 0;
     char *line = NULL;
@@ -187,7 +192,8 @@ bier_internal_t *read_config_file(char *config_filepath)
 
     // The last byte is the '\n' => must erase it by inserting a 0
     line[readed - 1] = '\0';
-    if (inet_pton(AF_INET6, line, bier_bft->local.s6_addr) != 1)
+    struct in6_addr local_addr = {};
+    if (inet_pton(AF_INET6, line, local_addr.s6_addr) != 1)
     {
         fprintf(stderr, "Cannot convert the local address: %s\n", line);
         free(bier_bft);
@@ -265,6 +271,28 @@ bier_internal_t *read_config_file(char *config_filepath)
         }
         bier_bft->bft[bft_entry->bfr_id - 1] = bft_entry; // bfr_id is one_indexed
     }
+
+    // Open raw socket to forward the packets
+    bier_bft->socket = socket(AF_INET6, SOCK_RAW, 253);
+    if (bier_bft->socket < 0)
+    {
+        perror("socket BFT");
+        free_bier_bft(bier_bft);
+        return NULL;
+    }
+
+    struct sockaddr_in6 local_router = {
+        .sin6_family = AF_INET6,
+    };
+    memcpy(bier_bft->local.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
+
+    if (bind(bier_bft->socket, (struct sockaddr *)&local_router, sizeof(local_router)) < 0)
+    {
+        perror("Bind local router");
+        free_bier_bft(bier_bft);
+        return NULL;
+    }
+
     return bier_bft;
 }
 
@@ -288,7 +316,7 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
     }
 }
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
 {
     // As specified in RFC 8296, we cannot rely on the `bsl` field of the BIER header
     // but we must know with the bift_id the true BSL
@@ -356,7 +384,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
 
                 // Send copy
                 bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
-                int err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
+                int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");

@@ -182,30 +182,12 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    int socket_fd = socket(AF_INET6, SOCK_RAW, 253);
-    if (socket_fd < 0)
-    {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in6 local = {};
-    local.sin6_family = AF_INET6;
-    memcpy(&local.sin6_addr.s6_addr, bier->local.s6_addr, sizeof(bier->local.s6_addr));
-
-    int err = bind(socket_fd, (struct sockaddr *)&local, sizeof(local));
-    if (err < 0)
-    {
-        perror("bind local");
-        exit(EXIT_FAILURE);
-    }
-
     // Destination of the multicast packet embedded in the BIER packet
     // This must be a multicast address
     char *destination_address = "ff0:babe:cafe::1";
     struct sockaddr_in6 dst = {};
 
-    err = inet_pton(AF_INET6, destination_address, &dst.sin6_addr.s6_addr);
+    int err = inet_pton(AF_INET6, destination_address, &dst.sin6_addr.s6_addr);
     if (err == 0)
     {
         perror("IPv6 destination");
@@ -242,19 +224,18 @@ int main(int argc, char *argv[])
     bier_header_t *bh = init_bier_header(&bitstring, 64, 6);
     if (!bh)
     {
-        close(socket_fd);
         exit(EXIT_FAILURE);
     }
 
     while (1)
     {
-        my_packet_t *my_packet = create_bier_ipv6_from_payload(bh, &local, &dst, sizeof(dummy_payload), dummy_payload);
+        my_packet_t *my_packet = create_bier_ipv6_from_payload(bh, &bier->local, &dst, sizeof(dummy_payload), dummy_payload);
         if (!my_packet)
         {
             break;
         }
         fprintf(stderr, "Sending a new packet\n");
-        err = bier_processing(my_packet->packet, my_packet->packet_length, socket_fd, bier, &local_bier_processing);
+        err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
         if (err < 0)
         {
             fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");
@@ -269,6 +250,5 @@ int main(int argc, char *argv[])
     // Free entire system
     fprintf(stderr, "Closing the program\n");
     free_bier_bft(bier);
-    close(socket_fd);
     exit(EXIT_FAILURE);
 }
