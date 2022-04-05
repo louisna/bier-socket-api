@@ -115,8 +115,8 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
 
     // UDP Header
     struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];
-    udp_header->uh_dport = 1234;
-    udp_header->uh_sport = 5678;
+    udp_header->uh_dport = htons(1234);
+    udp_header->uh_sport = htons(5678);
     udp_header->uh_ulen = htons(udp_header_length + payload_length);
 
     // Payload
@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
     raw_socket_arg_t raw_args = {};
     char *local_addr = "::1"; // Send to loopback the packets belonging to the router
     memset(&raw_args.local, 0, sizeof(struct sockaddr_in6));
-    if (inet_pton(AF_INET6, local_addr, &raw_args.local.sin6_addr.s6_addr) == 0)
+    if (inet_pton(AF_INET6, local_addr, raw_args.local.sin6_addr.s6_addr) == 0)
     {
         perror("loopback address");
         exit(EXIT_FAILURE);
