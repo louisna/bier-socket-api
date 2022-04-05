@@ -397,6 +397,7 @@ void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length
 
     struct ip6_hdr *hdr = (struct ip6_hdr*) &ipv6_packet;
     memcpy(&hdr->ip6_dst, &raw_args->local.sin6_addr, sizeof(raw_args->local.sin6_addr));
+    memcpy(&hdr->ip6_src, &raw_args->src, sizeof(raw_args->src));
     uint16_t chksm = udp_checksum(udp, sizeof(struct udphdr) + payload_length, &hdr->ip6_src, &hdr->ip6_dst);
     udp->check = chksm;
 

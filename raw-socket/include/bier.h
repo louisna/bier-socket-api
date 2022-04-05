@@ -85,6 +85,7 @@ typedef struct
 {
     int raw_socket;
     struct sockaddr_in6 local;
+    struct in6_addr src;
 } raw_socket_arg_t;
 
 bier_internal_t *read_config_file(char *config_filepath);

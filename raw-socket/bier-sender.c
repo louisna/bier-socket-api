@@ -193,6 +193,7 @@ int send_payload(bier_internal_t *bier, uint64_t bitstring, const void* payload,
         exit(EXIT_FAILURE);
     }
     raw_args.raw_socket = local_socket_fd;
+    raw_args.src = bier->local;
     bier_local_processing_t local_bier_processing = {};
     local_bier_processing.local_processing_function = &send_to_raw_socket;
     local_bier_processing.args = (void *)&raw_args;
@@ -306,7 +307,7 @@ int send_payload(bier_internal_t *bier, uint64_t bitstring, const void* payload,
     }
     raw_args.raw_socket = local_socket_fd;
     bier_local_processing_t local_bier_processing = {};
-    local_bier_processing.local_processing_function = &send_to_raw_socket;
+local_bier_processing.local_processing_function = &send_to_raw_socket;
     local_bier_processing.args = (void *)&raw_args;
 
     print_bft(bier);

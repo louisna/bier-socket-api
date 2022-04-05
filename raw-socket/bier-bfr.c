@@ -90,12 +90,18 @@ int main(int argc, char *argv[])
 
     uint16_t buffer_size = 1500;
     uint8_t *buffer = (uint8_t *)malloc(sizeof(uint8_t) * buffer_size);
+    struct sockaddr_in6 remote = {};
+    socklen_t remote_len = sizeof(remote);
     while (1)
     {
         memset(buffer, 0, sizeof(uint8_t) * buffer_size);
-        size_t length = recv(socket_fd, buffer, sizeof(uint8_t) * buffer_size, 0);
+        size_t length = recvfrom(socket_fd, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr*) &remote, &remote_len);
         fprintf(stderr, "Received packet of length=%lu on router %d\n", length, bier->local_bfr_id);
         print_buffer(buffer, length);
+	raw_args.src = remote.sin6_addr;
+	char buf[100];
+	inet_ntop(AF_INET6, &remote, buf, sizeof(remote)); 
+	fprintf(stderr, "src %s\n", buf);
         bier_processing(buffer, length, socket_fd, bier, &local_bier_processing);
     }
 
