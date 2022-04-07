@@ -80,14 +80,6 @@ typedef struct
     void (*local_processing_function)(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
 } bier_local_processing_t;
 
-// TODO: this structure will go to the application file
-typedef struct
-{
-    int raw_socket;
-    struct sockaddr_in6 local;
-    struct in6_addr src;
-} raw_socket_arg_t;
-
 /**
  * @brief Read a BIER static configuration file to construct the local BIER Forwarding Table
  * 
@@ -116,7 +108,5 @@ void free_bier_bft(bier_internal_t *bft);
  */
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 void print_bft(bier_internal_t *bft);
-void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
-uint16_t udp_checksum (const void *buff, size_t len, struct in6_addr *src_addr, struct in6_addr *dest_addr);
 
 #endif // BIER_H

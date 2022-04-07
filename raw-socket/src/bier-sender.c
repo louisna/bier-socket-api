@@ -123,12 +123,15 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
     // UDP Header
     struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];
     udp_header->uh_dport = htons(5000);
-    // udp_header->uh_sport = 5678;
+    udp_header->uh_sport = htons(53983);
     udp_header->uh_ulen = htons(udp_header_length + payload_length);
 
     // Payload
     uint8_t *packet_payload = &packet[ipv6_header_length + udp_header_length];
     memcpy(packet_payload, payload, sizeof(uint8_t) * payload_length);
+
+    // Compute UDP checksum
+    udp_header->uh_sum = udp_checksum(udp_header, sizeof(struct udphdr) + payload_length, &ipv6_header->ip6_src, &ipv6_header->ip6_dst);
 
     my_packet_t *my_packet = encap_bier_packet(bh, packet_total_length, packet);
     if (!my_packet)
@@ -139,181 +142,3 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
     free(packet);
     return my_packet;
 }
-
-/**
- * @brief This is an example of a function that handles a BIER packet whose destination is the local router processing it.
- * It just transmits the content of the BIER packet to the socket given in argument
- *
- * @param bier_packet BIER packet buffer. The BIER header is still in the buffer in case the application needs to retrieve information from it
- * @param packet_length the length of the packet buffer
- * @param bier_header_length the length of the BIER header (at the beginning of the packet)
- * @param args additional arguments given to the function. The function is responsible to know how to parse these arguments
- */
-int send_payload(bier_internal_t *bier, const uint64_t *bitstring, uint32_t bitstring_length, const void *payload, size_t payload_length)
-{
-    // Are the two following lines mandatory?
-    uint8_t buffer[payload_length];
-    memcpy(buffer, payload, payload_length);
-
-    // Destination of the multicast packet embedded in the BIER packet
-    // This must be a multicast address
-    char *destination_address = "ff0:babe:cafe::1";
-    struct sockaddr_in6 dst = {};
-    if (inet_pton(AF_INET6, destination_address, &dst.sin6_addr.s6_addr) == 0)
-    {
-        perror("IPv6 destination");
-        exit(EXIT_FAILURE);
-    }
-
-    int err = bind(bier->socket, (struct sockaddr *)&bier->local, sizeof(bier->local));
-    if (err < 0)
-    {
-        perror("bind local");
-        exit(EXIT_FAILURE);
-    }
-
-    // Local router behaviour
-    raw_socket_arg_t raw_args = {};
-    raw_args.local.sin6_family = AF_INET6;
-    // raw_args.local.sin6_port = htons(5000);
-    // inet_pton(AF_INET6, "::1", &raw_args.local.sin6_addr);
-    memcpy(&raw_args.local.sin6_addr, &bier->local, sizeof(bier->local));
-
-    // TODO: able to change udp port (src, dst)
-    // TODO: should be outside of the BIER sender processing
-    int local_socket_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
-    if (local_socket_fd < 0)
-    {
-        perror("socket loopback");
-        return -1;
-    }
-    raw_args.raw_socket = local_socket_fd;
-    raw_args.src = bier->local.sin6_addr;
-    bier_local_processing_t local_bier_processing = {};
-    local_bier_processing.local_processing_function = &send_to_raw_socket;
-    local_bier_processing.args = (void *)&raw_args;
-
-    // Create the BIER packet header
-    bier_header_t *bh = init_bier_header(bitstring, bitstring_length, 6);
-    if (!bh)
-    {
-        return -1;
-    }
-
-    my_packet_t *my_packet = create_bier_ipv6_from_payload(bh, &bier->local, &dst, payload_length, (uint8_t *)buffer);
-    if (!my_packet)
-    {
-        return -1;
-    }
-    fprintf(stderr, "Sending a new packet\n");
-    if (bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing) < 0)
-    {
-        fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");
-        my_packet_free(my_packet);
-        return -1;
-    }
-    fprintf(stderr, "Sent a new packet!\n");
-    my_packet_free(my_packet);
-
-    return 0;
-}
-
-/*int main(int argc, char *argv[])
-{
-    if (argc < 4)
-    {
-        fprintf(stderr, "Usage: %s [config_file] [interval - ms] [bitstring]\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    int interval = atoi(argv[2]);
-    if (interval == 0)
-    {
-        fprintf(stderr, "Cannot convert interval into int: %s\n", argv[2]);
-        exit(EXIT_FAILURE);
-    }
-
-    char *filename = argv[1];
-    bier_internal_t *bier = read_config_file(filename);
-    if (!bier)
-    {
-        exit(EXIT_FAILURE);
-    }
-
-    uint64_t bitstring_arg = (uint64_t)strtoull(argv[3], NULL, 16);
-    if (bitstring_arg == 0)
-    {
-        fprintf(stderr, "Cannot convert forwarding bitmask or no receiver is marked! Given: %s\n", argv[3]);
-        exit(EXIT_FAILURE);
-    }
-
-    // Destination of the multicast packet embedded in the BIER packet
-    // This must be a multicast address
-    char *destination_address = "ff0:babe:cafe::1";
-    struct sockaddr_in6 dst = {};
-
-    int err = inet_pton(AF_INET6, destination_address, &dst.sin6_addr.s6_addr);
-    if (err == 0)
-    {
-        perror("IPv6 destination");
-        exit(EXIT_FAILURE);
-    }
-
-    // Local router behaviour
-    raw_socket_arg_t raw_args = {};
-    char *local_addr = "::1"; // Send to loopback the packets belonging to the router
-    memset(&raw_args.local, 0, sizeof(struct sockaddr_in6));
-    if (inet_pton(AF_INET6, local_addr, raw_args.local.sin6_addr.s6_addr) == 0)
-    {
-        perror("loopback address");
-        exit(EXIT_FAILURE);
-    }
-    // TODO: able to change udp port (src, dst)
-    int local_socket_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
-    if (local_socket_fd < 0)
-    {
-        perror("socket loopback");
-        exit(EXIT_FAILURE);
-    }
-    raw_args.raw_socket = local_socket_fd;
-    bier_local_processing_t local_bier_processing = {};
-local_bier_processing.local_processing_function = &send_to_raw_socket;
-    local_bier_processing.args = (void *)&raw_args;
-
-    print_bft(bier);
-    char dummy_payload[10];
-    memset(dummy_payload, 1, sizeof(dummy_payload));
-    uint64_t bitstring = 0xf;
-
-    // Create the BIER packet header
-    bier_header_t *bh = init_bier_header(&bitstring, 64, 6);
-    if (!bh)
-    {
-        exit(EXIT_FAILURE);
-    }
-
-    while (1)
-    {
-        my_packet_t *my_packet = create_bier_ipv6_from_payload(bh, &bier->local, &dst, sizeof(dummy_payload), dummy_payload);
-        if (!my_packet)
-        {
-            break;
-        }
-        fprintf(stderr, "Sending a new packet\n");
-        err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
-        if (err < 0)
-        {
-            fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");
-            my_packet_free(my_packet);
-            break;
-        }
-        fprintf(stderr, "Sent a new packet!\n");
-        my_packet_free(my_packet);
-        sleep(interval);
-    }
-
-    // Free entire system
-    fprintf(stderr, "Closing the program\n");
-    free_bier_bft(bier);
-    exit(EXIT_FAILURE);
-}*/
