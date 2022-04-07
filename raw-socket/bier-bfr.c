@@ -38,26 +38,6 @@ int main(int argc, char *argv[])
     {
         exit(EXIT_FAILURE);
     }
-    // Open the file and setup the BIER router
-
-    int socket_fd = socket(AF_INET6, SOCK_RAW, 253);
-    if (socket_fd < 0)
-    {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in6 local;
-    memset(&local, 0, sizeof(struct sockaddr_in6));
-    local.sin6_family = AF_INET6;
-    memcpy(&local.sin6_addr.s6_addr, bier->local.s6_addr, sizeof(bier->local.s6_addr));
-
-    int err = bind(socket_fd, (struct sockaddr *)&local, sizeof(local));
-    if (err < 0)
-    {
-        perror("bind local");
-        exit(EXIT_FAILURE);
-    }
 
     // Local router behaviour
     raw_socket_arg_t raw_args;
@@ -95,18 +75,17 @@ int main(int argc, char *argv[])
     while (1)
     {
         memset(buffer, 0, sizeof(uint8_t) * buffer_size);
-        size_t length = recvfrom(socket_fd, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr*) &remote, &remote_len);
+        size_t length = recvfrom(bier->socket, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr *)&remote, &remote_len);
         fprintf(stderr, "Received packet of length=%lu on router %d\n", length, bier->local_bfr_id);
         print_buffer(buffer, length);
-	raw_args.src = remote.sin6_addr;
-	char buf[100];
-	inet_ntop(AF_INET6, &remote, buf, sizeof(remote)); 
-	fprintf(stderr, "src %s\n", buf);
-        bier_processing(buffer, length, socket_fd, bier, &local_bier_processing);
+        raw_args.src = remote.sin6_addr;
+        char buf[100];
+        inet_ntop(AF_INET6, &remote, buf, sizeof(remote));
+        fprintf(stderr, "src %s\n", buf);
+        bier_processing(buffer, length, bier, &local_bier_processing);
     }
 
     free(buffer);
     fprintf(stderr, "Closing the program on router %u\n", bier->local_bfr_id);
     free_bier_bft(bier);
-    close(socket_fd);
 }

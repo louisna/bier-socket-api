@@ -67,7 +67,7 @@ typedef struct
 typedef struct
 {
     int local_bfr_id;
-    struct in6_addr local;
+    struct sockaddr_in6 local;
     int nb_bft_entry;
     uint32_t bitstring_length; // In bits
     int socket;
@@ -88,9 +88,33 @@ typedef struct
     struct in6_addr src;
 } raw_socket_arg_t;
 
+/**
+ * @brief Read a BIER static configuration file to construct the local BIER Forwarding Table
+ * 
+ * @param config_filepath path to the configuration file
+ * @return bier_internal_t* structure containing the BFT information
+ */
 bier_internal_t *read_config_file(char *config_filepath);
+
+/**
+ * @brief Release the memory associated with the BIER Forwarding Table structure
+ * 
+ * @param bft pointer to the BIER Forwarding Table structure
+ */
 void free_bier_bft(bier_internal_t *bft);
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
+
+/**
+ * @brief Process the packet given by *buffer* of length *buffer_length* using the BIER Forwarding Table *bft*.
+ * For each packet whose destination is the local router processing the packet, the *bier_local_processing* structure
+ * launches the local function of the structure. Each forwarding is done using the *socket_fd* raw socket
+ * 
+ * @param buffer pointer to the buffer - should start with the BIER header
+ * @param buffer_length length of the *buffer*
+ * @param bft the BIER Forwarding Table
+ * @param bier_local_processing structure containing the function and additional arguments to handle a local packet
+ * @return int error indication state
+ */
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 void print_bft(bier_internal_t *bft);
 void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
 uint16_t udp_checksum (const void *buff, size_t len, struct in6_addr *src_addr, struct in6_addr *dest_addr);

@@ -18,5 +18,5 @@ Cargo.lock
 .vscode
 
 # Binary
-raw-socket/bier-sender
 raw-socket/bier-bfr
+raw-socket/bier-bifr

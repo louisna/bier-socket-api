@@ -149,6 +149,10 @@ void free_bier_bft(bier_internal_t *bft)
         }
     }
     free(bft->bft);
+    if (bft->socket >= 0)
+    {
+        close(bft->socket);
+    }
     free(bft);
 }
 
@@ -172,6 +176,7 @@ bier_internal_t *read_config_file(char *config_filepath)
         return NULL;
     }
     memset(bier_bft, 0, sizeof(bier_internal_t));
+    bier_bft->socket = -1;
 
     ssize_t readed = 0;
     char *line = NULL;
@@ -187,7 +192,8 @@ bier_internal_t *read_config_file(char *config_filepath)
 
     // The last byte is the '\n' => must erase it by inserting a 0
     line[readed - 1] = '\0';
-    if (inet_pton(AF_INET6, line, bier_bft->local.s6_addr) != 1)
+    struct in6_addr local_addr = {};
+    if (inet_pton(AF_INET6, line, local_addr.s6_addr) != 1)
     {
         fprintf(stderr, "Cannot convert the local address: %s\n", line);
         free(bier_bft);
@@ -265,6 +271,28 @@ bier_internal_t *read_config_file(char *config_filepath)
         }
         bier_bft->bft[bft_entry->bfr_id - 1] = bft_entry; // bfr_id is one_indexed
     }
+
+    // Open raw socket to forward the packets
+    bier_bft->socket = socket(AF_INET6, SOCK_RAW, 253);
+    if (bier_bft->socket < 0)
+    {
+        perror("socket BFT");
+        free_bier_bft(bier_bft);
+        return NULL;
+    }
+
+    struct sockaddr_in6 local_router = {
+        .sin6_family = AF_INET6,
+    };
+    memcpy(bier_bft->local.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
+
+    if (bind(bier_bft->socket, (struct sockaddr *)&local_router, sizeof(local_router)) < 0)
+    {
+        perror("Bind local router");
+        free_bier_bft(bier_bft);
+        return NULL;
+    }
+
     return bier_bft;
 }
 
@@ -288,7 +316,7 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
     }
 }
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
 {
     // As specified in RFC 8296, we cannot rely on the `bsl` field of the BIER header
     // but we must know with the bift_id the true BSL
@@ -312,7 +340,6 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
         {
             fprintf(stderr, "There seems to be an error. The packet bitstring contains a bit set to true that is not mapped to a known BFR in the BFT.\n");
             return -1;
-
         }
         uint64_t bitstring = be64toh(bitstring_ptr[bitstring_idx]);
         // printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
@@ -325,7 +352,6 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
             {
                 fprintf(stderr, "There seems to be an error. The packet bitstring contains a bit set to true that is not mapped to a known BFR in the BFT.\n");
                 return -1;
-
             }
             if ((bitstring >> idx_bfr_word) & 1) // The current lowest-order bit is set: this BFER must receive a copy
             {
@@ -358,7 +384,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, int socket_fd, bier_i
 
                 // Send copy
                 bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
-                int err = sendto(socket_fd, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
+                int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");
@@ -382,69 +408,71 @@ void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length
     uint8_t ipv6_packet[100];
     size_t v6_packet_length = packet_length - bier_header_length;
     size_t payload_length = v6_packet_length - sizeof(struct ip6_hdr) - sizeof(struct udphdr);
-    memcpy((void *) &ipv6_packet, &bier_packet[bier_header_length], v6_packet_length);
-    struct udphdr *udp = &ipv6_packet[sizeof(struct ip6_hdr)];
+    memcpy((void *)&ipv6_packet, &bier_packet[bier_header_length], v6_packet_length);
+    struct udphdr *udp = (struct udphdr *)&ipv6_packet[sizeof(struct ip6_hdr)];
     uint8_t *payload = &ipv6_packet[sizeof(struct ip6_hdr) + sizeof(struct udphdr)];
 
-    for (int i =0; i<payload_length; i++)
-	fprintf(stderr, "%x", payload[i]);
+    for (int i = 0; i < payload_length; i++)
+        fprintf(stderr, "%x", payload[i]);
     fprintf(stderr, "\n");
 
     fprintf(stderr, "before local sendto\n");
-    for (int i = 0; i<v6_packet_length; i++)
-	fprintf(stderr, "%x", ipv6_packet[i]);
+    for (int i = 0; i < v6_packet_length; i++)
+        fprintf(stderr, "%x", ipv6_packet[i]);
     fprintf(stderr, "\n");
 
-    struct ip6_hdr *hdr = (struct ip6_hdr*) &ipv6_packet;
+    struct ip6_hdr *hdr = (struct ip6_hdr *)&ipv6_packet;
     memcpy(&hdr->ip6_dst, &raw_args->local.sin6_addr, sizeof(raw_args->local.sin6_addr));
     memcpy(&hdr->ip6_src, &raw_args->src, sizeof(raw_args->src));
     uint16_t chksm = udp_checksum(udp, sizeof(struct udphdr) + payload_length, &hdr->ip6_src, &hdr->ip6_dst);
-    udp->check = chksm;
+    udp->uh_sum = chksm;
 
     fprintf(stderr, "local sendto after\n");
-    for (int i = 0; i<v6_packet_length; i++)
-	fprintf(stderr, "%x", ipv6_packet[i]);
+    for (int i = 0; i < v6_packet_length; i++)
+        fprintf(stderr, "%x", ipv6_packet[i]);
     fprintf(stderr, "\n");
-    if (sendto(raw_args->raw_socket, ipv6_packet, v6_packet_length, 0, (struct sockaddr *)&raw_args->local, sizeof(raw_args->local)) != v6_packet_length) {
+    if (sendto(raw_args->raw_socket, ipv6_packet, v6_packet_length, 0, (struct sockaddr *)&raw_args->local, sizeof(raw_args->local)) != v6_packet_length)
+    {
         perror("Cannot send using raw socket... ignoring");
     }
 }
 
 /* https://github.com/gih900/IPv6--DNS-Frag-Test-Rig/blob/master/dns-server-frag.c */
-uint16_t udp_checksum (const void *buff, size_t len, struct in6_addr *src_addr, struct in6_addr *dest_addr) 	
+uint16_t udp_checksum(const void *buff, size_t len, struct in6_addr *src_addr, struct in6_addr *dest_addr)
 {
-  const uint16_t *buf=buff;
-  uint16_t *ip_src=(void *)src_addr, *ip_dst=(void *)dest_addr;
-  uint32_t sum;
-  size_t length=len;
-  int i  ;
- 
-  /* Calculate the sum */
-  sum = 0;
-  while (len > 1) {
-    sum += *buf++;
-    if (sum & 0x80000000)
-      sum = (sum & 0xFFFF) + (sum >> 16);
-    len -= 2;
+    const uint16_t *buf = buff;
+    uint16_t *ip_src = (void *)src_addr, *ip_dst = (void *)dest_addr;
+    uint32_t sum;
+    size_t length = len;
+    int i;
+
+    /* Calculate the sum */
+    sum = 0;
+    while (len > 1)
+    {
+        sum += *buf++;
+        if (sum & 0x80000000)
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        len -= 2;
     }
-  if ( len & 1 )
-    /* Add the padding if the packet length is odd */
-    sum += *((uint8_t *)buf);
- 
-  /* Add the pseudo-header */
-  for (i = 0 ; i <= 7 ; ++i) 
-    sum += *(ip_src++);
- 
-  for (i = 0 ; i <= 7 ; ++i) 
-    sum += *(ip_dst++);
- 
-  sum += htons(IPPROTO_UDP);
-  sum += htons(length);
- 
-  /* Add the carries */
-  while (sum >> 16)
-    sum = (sum & 0xFFFF) + (sum >> 16);
- 
-  /* Return the one's complement of sum */
-  return((uint16_t)(~sum));
+    if (len & 1)
+        /* Add the padding if the packet length is odd */
+        sum += *((uint8_t *)buf);
+
+    /* Add the pseudo-header */
+    for (i = 0; i <= 7; ++i)
+        sum += *(ip_src++);
+
+    for (i = 0; i <= 7; ++i)
+        sum += *(ip_dst++);
+
+    sum += htons(IPPROTO_UDP);
+    sum += htons(length);
+
+    /* Add the carries */
+    while (sum >> 16)
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    /* Return the one's complement of sum */
+    return ((uint16_t)(~sum));
 }
