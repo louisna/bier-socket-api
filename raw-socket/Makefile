@@ -3,17 +3,16 @@ LDFLAGS=-rdynamic -pie -U_FORTIFY_SOURCE
 INCLUDE_HEADERS_DIRECTORY=-Iheaders
 LIBS=-lm
 
-all: bier-sender bier-bfr src/bier.o
+all: bier-bfr bier-bifr src/udp-checksum.o src/local-processing.o src/bier.o src/bier-sender.o
 
-bier-sender: bier-sender.c src/bier.o
+bier-bfr: bier-bfr.c src/udp-checksum.o src/local-processing.o src/bier.o 
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-bier-bfr: bier-bfr.c src/bier.o
-	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^
+bier-bifr: bier-bifr.c src/udp-checksum.o src/local-processing.o src/bier.o src/bier-sender.o
+	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 %.o: %.c
-	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ -c $<
+	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ -c $^
 
 clean:
-	rm -f src/*.o
-	rm -f bier-bfr bier-sender
+	rm -f src/*.o *.o bier-bfr bier-bifr

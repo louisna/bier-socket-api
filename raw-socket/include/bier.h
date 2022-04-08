@@ -19,6 +19,7 @@
 #include <netinet/ip6.h>
 #include <unistd.h>
 #include <signal.h>
+#include <netinet/udp.h>
 
 #define get_bift_id(data) (be32toh(data[0]) >> 12)
 #define get_bitstring(data, bitstring_idx) (htobe64(((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
@@ -78,13 +79,6 @@ typedef struct
     void *args;
     void (*local_processing_function)(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args);
 } bier_local_processing_t;
-
-// TODO: this structure will go to the application file
-typedef struct
-{
-    int raw_socket;
-    struct sockaddr_in6 local;
-} raw_socket_arg_t;
 
 /**
  * @brief Read a BIER static configuration file to construct the local BIER Forwarding Table

@@ -12,8 +12,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/ip6.h>
-#include <netinet/udp.h>
 #include <math.h>
+#include "bier.h"
+#include "udp-checksum.h"
 
 typedef struct
 {
@@ -35,7 +36,7 @@ typedef struct
  * @param bier_proto the value of the "proto" field of the BIER header (i.e., the next header)
  * @return bier_header_t* structure containing the ->_packet of ->header_length bytes (including the bitstring)
  */
-bier_header_t *init_bier_header(uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto);
+bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto);
 
 /**
  * @brief Release the memory associated with the BIER header
@@ -90,6 +91,10 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
  * @param payload application payload
  * @return my_packet_t* pointer to the custom packet
  */
-my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, uint8_t *payload);
+my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, const uint8_t *payload);
+
+int send_payload(bier_internal_t *bier, const uint64_t *bitstring, uint32_t bitstring_length, const void *payload, size_t payload_length);
+
+
 
 #endif // BIER_SENDER_H

@@ -342,7 +342,6 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
             return -1;
         }
         uint64_t bitstring = be64toh(bitstring_ptr[bitstring_idx]);
-        // printf("LE BITSTRING index %u %lu\n", bitstring_idx, bitstring);
 
         // Use modulo operation for non-zero uint64_t words
         uint32_t idx_bfr_word = idx_bfr % 64;
@@ -393,7 +392,6 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                 fprintf(stderr, "Sent packet\n");
                 update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
                 bitstring = be64toh(bitstring_ptr[bitstring_idx]);
-                // printf("Bitstring is now %lu\n", bitstring);
             }
             ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
             idx_bfr_word = idx_bfr % 64;
