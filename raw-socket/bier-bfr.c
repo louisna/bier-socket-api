@@ -14,17 +14,6 @@ void print_buffer(uint8_t *buffer, size_t length)
     printf("\n");
 }
 
-/*void send_to_raw_socket(const uint8_t *bier_packet, const uint32_t packet_length, const uint32_t bier_header_length, void *args)
-{
-    raw_socket_arg_t *raw_args = (raw_socket_arg_t *)args;
-    const uint8_t *ipv6_packet = &bier_packet[bier_header_length];
-    int err = sendto(raw_args->raw_socket, ipv6_packet, packet_length - bier_header_length, 0, (struct sockaddr *)&raw_args->local, sizeof(raw_args->local));
-    if (err < 0)
-    {
-        perror("Cannot send using raw socket... ignoring");
-    }
-}*/
-
 int main(int argc, char *argv[])
 {
     if (argc < 2)

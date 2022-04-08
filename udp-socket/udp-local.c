@@ -67,11 +67,11 @@ int main(int argc, char *argv[])
 
     char packet[4096];
     int i = 0;
-    while (i++ < 10)
+    while (1)
     {
         memset(packet, 0, sizeof(packet));
         memset(packet, 1, sizeof(char) * 10);
-        ssize_t received = recv(socket_fd, packet, sizeof(packet), 0);
+        ssize_t received = recvfrom(socket_fd, packet, sizeof(packet), 0, &loopback_addr, &socket_length);
         // ssize_t received = sendto(socket_fd, packet, 10, 0, (struct sockaddr *)&loopback_addr, socket_length);
         if (received == -1)
         {
