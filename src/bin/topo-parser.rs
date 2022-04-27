@@ -1,16 +1,18 @@
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as fmtWrite;
-use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::io::{BufRead, BufReader, Lines};
+use bier_rust::dijkstra::{Graph, dijkstra};
 
-#[derive(Debug)]
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Node {
-    name: String,
     _id: u32,
+    name: String,
     ipv6_addr_str: String,
     neighbours: Vec<(usize, i32)>, // (id, metric)
 }
@@ -30,6 +32,7 @@ fn main() {
 
     let id_to_address_file = File::open(&args[3]).expect("Impossible to open the id ipv6 mapping");
     let id_to_address = parse_id_to_ipv6(id_to_address_file);
+    println!("JE NE COMPRENDS PAS {:?}", id_to_address);
 
     let file = File::open(&args[1]).expect("Impossible to open the file");
     let reader = BufReader::new(file);
@@ -60,17 +63,59 @@ fn parse_id_to_ipv6(id_to_ipv6_file: File) -> HashMap<u32, String> {
         let line = line_unw.unwrap();
         let split: Vec<&str> = line.split(' ').collect();
         let id: u32 = split[0].parse::<u32>().unwrap();
-        let address = split[1];
-        map.insert(id, address[..address.len() - 3].to_string());
+        let address = split[1].split('/').collect::<Vec<&str>>()[0];
+        map.insert(id, address.to_string());
     }
 
     map
 }
 
+fn graph_node_to_usize(graph: &[Node]) -> Vec<Vec<(usize, i32)>> {
+    graph.iter().map(|node| node.neighbours.to_owned()).collect()
+}
+
+fn get_all_out_interfaces_to_destination(predecessors: &HashMap<&usize, Vec<&usize>>, source: usize, destination: usize) -> Vec<usize> {
+    if source == destination {
+        return vec![source];
+    }
+    
+    let mut out: Vec<usize> = Vec::new();
+    let mut visited = vec![false; predecessors.len()];
+    let mut stack = VecDeque::new();
+    stack.push_back(destination);
+    println!("From {} to {}", source, destination);
+    while !stack.is_empty() {
+        let elem = stack.pop_back().unwrap();
+        println!("Visit {}", elem);
+        if visited[elem] {
+            continue;
+        }
+        visited[elem] = true;
+        for &&pred in predecessors.get(&elem).unwrap() {
+            println!("    pred is {}", pred);
+            if pred == source {
+                out.push(elem);
+                continue;
+            }
+            if visited[pred] {
+                continue;
+            }
+            stack.push_back(pred);
+        }
+    }
+    out
+}
+
 fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
     let nb_nodes = (*graph).len(); // The * just to test
+    let graph_id = graph_node_to_usize(graph);
     for node in 0..nb_nodes {
-        let next_hop = dijkstra(graph, node);
+        // Predecessor(s) for each node, alongside the shortest path(s) from `node`
+        let predecessors = dijkstra(&graph_id, &node).unwrap();
+
+        // Construct the next hop mapping, possibly there are multiple paths so multiple output interfaces
+        let next_hop: Vec<Vec<usize>> = (0..nb_nodes).map(|i| get_all_out_interfaces_to_destination(&predecessors, node, i)).collect();
+
         let mut s = String::new();
 
         // Write name of the node and total number of nodes
@@ -83,20 +128,24 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         )
         .unwrap();
         for bfr_id in 0..nb_nodes {
-            let the_next_hop = next_hop[bfr_id];
-            let next_hop_str = &graph[the_next_hop].ipv6_addr_str;
-            let bfm = next_hop.iter().rev().fold(String::new(), |mut fbm, nh| {
-                if *nh == the_next_hop {
-                    fbm.push('1');
-                    fbm
-                } else {
-                    if !fbm.is_empty() {
-                        fbm.push('0');
+            let mut hops_vec = Vec::new();
+            for &the_next_hop in &next_hop[bfr_id] {
+                let next_hop_str = &graph[the_next_hop].ipv6_addr_str;
+                let bfm = next_hop.iter().rev().fold(String::new(), |mut fbm, nh| {
+                    if nh.contains(&the_next_hop) {
+                        fbm.push('1');
+                        fbm
+                    } else {
+                        if !fbm.is_empty() {
+                            fbm.push('0');
+                        }
+                        fbm
                     }
-                    fbm
-                }
-            });
-            writeln!(s, "{} {} {}", bfr_id + 1, bfm, next_hop_str).unwrap();
+                });
+                hops_vec.push((bfm, next_hop_str));
+            }
+            let st = hops_vec.iter().fold(String::new(), |s, (bfm, nxthop)| s + " " + &format!("{} {}", bfm, nxthop));
+            writeln!(s, "{} {}", bfr_id + 1, st).unwrap();
         }
         println!("Pour node {}:\n{}", graph[node].name, s);
         println!("L'id du node {}", graph[node]._id);
@@ -115,46 +164,6 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         file.write_all(s.as_bytes())?;
     }
     Ok(())
-}
-
-fn dijkstra(graph: &[Node], start: usize) -> Vec<usize> {
-    let mut heap: BinaryHeap<(i32, (usize, usize))> = BinaryHeap::new();
-    let nb_nodes = graph.len();
-    let mut visited = vec![false; nb_nodes];
-    // Must store for each destination where it comes from
-    let mut predecessor = vec![nb_nodes + 1; nb_nodes];
-
-    heap.push((0, (start, start)));
-    while !heap.is_empty() {
-        let (val, (node, from)) = heap.pop().unwrap();
-        if visited[node] {
-            continue;
-        }
-        visited[node] = true;
-        predecessor[node] = from;
-
-        // Add all neighbours
-        for (neigh, metric) in graph[node]
-            .neighbours
-            .iter()
-            .filter(|(neigh, _)| !visited[*neigh])
-        {
-            heap.push((val - metric, (*neigh, node)));
-        }
-    }
-
-    // Now we have to build the nexthop map for each possible destination T_T
-    let mut next_hop = vec![start; nb_nodes];
-    for (node, node_next_hop) in next_hop.iter_mut().enumerate().take(nb_nodes) {
-        // For each node, go in reverse order until we find the nexthop
-        let mut runner = node;
-        while predecessor[runner] != start {
-            runner = predecessor[runner];
-        }
-        *node_next_hop = runner;
-    }
-
-    next_hop
 }
 
 fn parse_file(
@@ -205,4 +214,51 @@ fn parse_file(
     }
 
     graph
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_all_out_interfaces_to_destination_fixed() {
+        // Create a dummy graph and provide the predecessors list
+        // It tests ECMP
+        //    0
+        //   / \
+        //  1   2
+        //   \ /
+        //    3
+        //    |
+        //    4
+        // Expect to get two output interfaces from 0 to 3
+        let mut predecessors: HashMap<&usize, Vec<&usize>> = HashMap::new();
+        predecessors.insert(&0, vec![&0]);
+        predecessors.insert(&1, vec![&0]);
+        predecessors.insert(&2, vec![&0]);
+        predecessors.insert(&3, vec![&1, &2]);
+        predecessors.insert(&4, vec![&3]);
+        
+        // From 0 to 1
+        let mut output_interfaces = get_all_out_interfaces_to_destination(&predecessors, 0, 1);
+        assert_eq!(output_interfaces.len(), 1);
+        assert!(output_interfaces.contains(&1));
+        
+        // From 0 to 2
+        output_interfaces = get_all_out_interfaces_to_destination(&predecessors, 0, 2);
+        assert_eq!(output_interfaces.len(), 1);
+        assert!(output_interfaces.contains(&2));
+        
+        // From 0 to 3
+        output_interfaces = get_all_out_interfaces_to_destination(&predecessors, 0, 3);
+        assert_eq!(output_interfaces.len(), 2);
+        assert!(output_interfaces.contains(&1));
+        assert!(output_interfaces.contains(&2));
+        
+        // From 0 to 4
+        output_interfaces = get_all_out_interfaces_to_destination(&predecessors, 0, 4);
+        assert_eq!(output_interfaces.len(), 2);
+        assert!(output_interfaces.contains(&1));
+        assert!(output_interfaces.contains(&2));
+    }
 }
