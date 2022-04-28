@@ -1,4 +1,3 @@
-use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env;
@@ -6,7 +5,7 @@ use std::fmt::Write as fmtWrite;
 use std::fs::File;
 use std::io::Write;
 use std::io::{BufRead, BufReader, Lines};
-use bier_rust::dijkstra::{Graph, dijkstra};
+use bier_rust::dijkstra::{dijkstra};
 
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -32,7 +31,6 @@ fn main() {
 
     let id_to_address_file = File::open(&args[3]).expect("Impossible to open the id ipv6 mapping");
     let id_to_address = parse_id_to_ipv6(id_to_address_file);
-    println!("JE NE COMPRENDS PAS {:?}", id_to_address);
 
     let file = File::open(&args[1]).expect("Impossible to open the file");
     let reader = BufReader::new(file);
@@ -83,16 +81,13 @@ fn get_all_out_interfaces_to_destination(predecessors: &HashMap<&usize, Vec<&usi
     let mut visited = vec![false; predecessors.len()];
     let mut stack = VecDeque::new();
     stack.push_back(destination);
-    println!("From {} to {}", source, destination);
     while !stack.is_empty() {
         let elem = stack.pop_back().unwrap();
-        println!("Visit {}", elem);
         if visited[elem] {
             continue;
         }
         visited[elem] = true;
         for &&pred in predecessors.get(&elem).unwrap() {
-            println!("    pred is {}", pred);
             if pred == source {
                 out.push(elem);
                 continue;
@@ -145,7 +140,7 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
                 hops_vec.push((bfm, next_hop_str));
             }
             let st = hops_vec.iter().fold(String::new(), |s, (bfm, nxthop)| s + " " + &format!("{} {}", bfm, nxthop));
-            writeln!(s, "{} {}", bfr_id + 1, st).unwrap();
+            writeln!(s, "{} {} {}", bfr_id + 1, hops_vec.len(), st).unwrap();
         }
         println!("Pour node {}:\n{}", graph[node].name, s);
         println!("L'id du node {}", graph[node]._id);
@@ -153,7 +148,6 @@ fn bier_config_build(graph: &[Node], output_dir: &str) -> std::io::Result<()> {
         //    .join(std::path::Path::new(&format!("bier-config-{}.txt", graph[node]._id)));
         let pathname = format!("bier-config-{}.txt", graph[node]._id);
         let path = std::path::Path::new(&pathname);
-        println!("Le path est {:?}", path);
         let mut file = match File::create(&path) {
             Ok(f) => f,
             Err(e) => {
