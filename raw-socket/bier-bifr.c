@@ -73,7 +73,8 @@ int main(int argc, char *argv[])
 
     print_bft(bier);
     char dummy_payload[10];
-    memset(dummy_payload, 1, sizeof(dummy_payload));
+    uint64_t *id_packet = (uint64_t *)&dummy_payload[0];
+    memset(dummy_payload, 0, sizeof(dummy_payload));
 
     // Create the BIER packet header
     bier_header_t *bh = init_bier_header(&bitstring_arg, 64, 6);
@@ -89,7 +90,9 @@ int main(int argc, char *argv[])
         {
             break;
         }
+        (*id_packet)++;
         fprintf(stderr, "Sending a new packet\n");
+        set_entropy(my_packet->packet, (uint16_t)*id_packet);
         err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
         if (err < 0)
         {

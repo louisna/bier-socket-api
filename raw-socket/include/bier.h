@@ -21,8 +21,8 @@
 #include <signal.h>
 #include <netinet/udp.h>
 
-#define get_bift_id(data) (be32toh(data[0]) >> 12)
-#define get_bitstring(data, bitstring_idx) (htobe64(((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
+#define get_bift_id(data) (be32toh(((uint32_t *)data)[0]) >> 12)
+#define get_bitstring(data, bitstring_idx) (htobe64(*((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
 #define get_bitstring_ptr(data) ((uint64_t *)(&(data)[12]))
 #define set_bitstring(data, bitstring_idx, bitstring) \
     {                                                 \
@@ -48,6 +48,12 @@
         d8[5] &= 0x0f;              \
         d8[5] |= (bsl << 4);        \
     }
+#define get_entropy(d) (((uint16_t *)d)[5])
+#define set_entropy(d, v)                  \
+    {                                      \
+        uint16_t *____d16 = (uint16_t *)d; \
+        ____d16[5] = v;                    \
+    }
 
 /**
  * @brief Bits operations on the bitstring
@@ -63,11 +69,17 @@ typedef enum
  */
 typedef struct
 {
-    uint32_t bfr_id; // BFR-ID of the neighbour router in the network
-    uint64_t *forwarding_bitmask; // The bitmask of this BFR entry
-    uint32_t bitstring_length; // Length of `forwarding_bitmask` in bits
-    int32_t bfr_nei; // BIER Forwarding Router Neighbour - Decrepated
+    uint64_t *forwarding_bitmask;     // The bitmask of this BFR entry
+    uint32_t bitstring_length;        // Length of `forwarding_bitmask` in bits
+    int32_t bfr_nei;                  // BIER Forwarding Router Neighbour - Decrepated
     struct sockaddr_in6 bfr_nei_addr; // Socket address to reach the BFR neighbors of this entry
+} bier_bft_entry_ecmp_t;
+
+typedef struct
+{
+    uint32_t bfr_id; // BFR-ID of the neighbour router in the network
+    int nb_ecmp_entries;
+    bier_bft_entry_ecmp_t **ecmp_entry;
 } bier_bft_entry_t;
 
 /**
@@ -75,12 +87,12 @@ typedef struct
  */
 typedef struct
 {
-    int local_bfr_id; // BFR-ID of the router in the network
+    int local_bfr_id;          // BFR-ID of the router in the network
     struct sockaddr_in6 local; // Socket address with the loopback address of the router
-    int nb_bft_entry; // Number of entries in the BIER Forwarding Table
+    int nb_bft_entry;          // Number of entries in the BIER Forwarding Table
     uint32_t bitstring_length; // Represents the "BSL" in bits
-    int socket; // Socket to send and receive packets
-    bier_bft_entry_t **bft; // Table of length `nb_bft_entry` containing all entries of the BIER Forwarding Table
+    int socket;                // Socket to send and receive packets
+    bier_bft_entry_t **bft;    // Table of length `nb_bft_entry` containing all entries of the BIER Forwarding Table
 } bier_internal_t;
 
 /**
@@ -98,7 +110,7 @@ typedef struct
 
 /**
  * @brief Read a BIER static configuration file to construct the local BIER Forwarding Table
- * 
+ *
  * @param config_filepath path to the configuration file
  * @return bier_internal_t* structure containing the BFT information
  */
@@ -106,7 +118,7 @@ bier_internal_t *read_config_file(char *config_filepath);
 
 /**
  * @brief Release the memory associated with the BIER Forwarding Table structure
- * 
+ *
  * @param bft pointer to the BIER Forwarding Table structure
  */
 void free_bier_bft(bier_internal_t *bft);
@@ -115,7 +127,7 @@ void free_bier_bft(bier_internal_t *bft);
  * @brief Process the packet given by *buffer* of length *buffer_length* using the BIER Forwarding Table *bft*.
  * For each packet whose destination is the local router processing the packet, the *bier_local_processing* structure
  * launches the local function of the structure. Each forwarding is done using the *socket_fd* raw socket
- * 
+ *
  * @param buffer pointer to the buffer - should start with the BIER header
  * @param buffer_length length of the *buffer*
  * @param bft the BIER Forwarding Table
@@ -126,7 +138,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table `bft`.
- * 
+ *
  * @param bft the BIER Forwarding Table to display.
  */
 void print_bft(bier_internal_t *bft);

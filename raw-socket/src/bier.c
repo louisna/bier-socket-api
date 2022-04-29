@@ -35,10 +35,23 @@ void print_bft(bier_internal_t *bft)
     for (int i = 0; i < bft->nb_bft_entry; ++i)
     {
         bier_bft_entry_t *bft_entry = bft->bft[i];
-        printf("    #%u: ID=%u, ", i, bft_entry->bfr_id);
-        for (uint32_t j = 0; j < bitstring_max_idx; ++j)
+        printf("    #%u: ID=%u", i + 1, bft_entry->bfr_id);
+        if (bft_entry->nb_ecmp_entries > 1)
         {
-            printf("%lx ", bft_entry->forwarding_bitmask[j]);
+            printf(" (ECMP=%u)", bft_entry->nb_ecmp_entries);
+        }
+        printf(": ");
+        for (int ecmp_entry = 0; ecmp_entry < bft_entry->nb_ecmp_entries; ++ecmp_entry)
+        {
+            bier_bft_entry_ecmp_t *ecmp_map = bft_entry->ecmp_entry[ecmp_entry];
+            for (uint32_t j = 0; j < bitstring_max_idx; ++j)
+            {
+                printf("%lx ", ecmp_map->forwarding_bitmask[j]);
+            }
+            if (ecmp_entry < bft_entry->nb_ecmp_entries - 1)
+            {
+                printf(", ");
+            }
         }
         printf("\n");
     }
@@ -58,15 +71,6 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length)
     }
     memset(bier_entry, 0, sizeof(bier_bft_entry_t));
 
-    bier_entry->forwarding_bitmask = (uint64_t *)malloc(bitstring_length);
-    if (!bier_entry->forwarding_bitmask)
-    {
-        perror("malloc forwarding bitmask");
-        free(bier_entry);
-        return NULL;
-    }
-    memset(bier_entry->forwarding_bitmask, 0, bitstring_length);
-
     // First is the BFR ID
     char *ptr = strtok(line_config, delim);
     if (ptr == NULL)
@@ -80,62 +84,106 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length)
         return NULL;
     }
 
+    // Number of ECMP paths
     ptr = strtok(NULL, delim);
     if (ptr == NULL)
     {
         goto empty_string;
     }
-    // Parse the string line a bit at a time because it may be too long to hold in a single number
-    uint64_t bitstring_iter = 0;
-    uint64_t bitstring_word_iter = 0;
-    int word_length = strlen(ptr);
-    for (int i = word_length - 1; i >= 0; --i)
+    int nb_ecmp = atoi(ptr);
+    if (nb_ecmp == 0)
     {
-        if (bitstring_iter >= 64)
-        {
-            bitstring_iter = 0;
-            ++bitstring_word_iter;
-        }
-        char c = ptr[i];
-        if (c == '1')
-        {
-            bier_entry->forwarding_bitmask[bitstring_word_iter] += 1 << bitstring_iter;
-        }
-        ++bitstring_iter;
+        fprintf(stderr, "Cannot convert the number of ECMP paths: %s\n", ptr);
+        return NULL;
     }
-
-    ptr = strtok(NULL, delim);
-    if (ptr == NULL)
+    bier_entry->nb_ecmp_entries = nb_ecmp;
+    bier_entry->ecmp_entry = (bier_bft_entry_ecmp_t **)malloc(sizeof(bier_bft_entry_ecmp_t *) * nb_ecmp);
+    if (!bier_entry->ecmp_entry)
     {
-        goto empty_string;
-    }
-    struct sockaddr_in6 bfr_nei_addr;
-    memset(&bfr_nei_addr, 0, sizeof(struct sockaddr_in6));
-    bfr_nei_addr.sin6_family = AF_INET6;
-    // Must also clean the '\n' of the string
-    clean_line_break(ptr);
-    if (inet_pton(AF_INET6, ptr, bfr_nei_addr.sin6_addr.s6_addr) != 1)
-    {
-        fprintf(stderr, "Cannot convert neighbour address: %s\n", ptr);
-        perror("inet_ntop bfr_nei_addr");
+        perror("malloc ecmp entry");
         return NULL;
     }
 
+    // Create all ECMP entries for this destination BFR ID
+    for (int i_ecmp = 0; i_ecmp < nb_ecmp; ++i_ecmp)
+    {
+        bier_bft_entry_ecmp_t *entry_ecmp = (bier_bft_entry_ecmp_t *)malloc(sizeof(bier_bft_entry_ecmp_t));
+        if (!entry_ecmp)
+        {
+            fprintf(stderr, "Cannot allocate memory for the entry\n");
+            return NULL;
+        }
+        memset(entry_ecmp, 0, sizeof(bier_bft_entry_ecmp_t));
+
+        entry_ecmp->forwarding_bitmask = (uint64_t *)malloc(bitstring_length);
+        if (!entry_ecmp->forwarding_bitmask)
+        {
+            perror("malloc forwarding bitmask");
+            // TODO: free allocated memory
+            return NULL;
+        }
+        memset(entry_ecmp->forwarding_bitmask, 0, sizeof(bitstring_length));
+
+        ptr = strtok(NULL, delim);
+        if (ptr == NULL)
+        {
+            goto empty_string;
+        }
+
+        // Parse the string line a bit at a time because it may be too long to hold in a single number
+        uint64_t bitstring_iter = 0;
+        uint64_t bitstring_word_iter = 0;
+        int word_length = strlen(ptr);
+        for (int i = word_length - 1; i >= 0; --i)
+        {
+            if (bitstring_iter >= 64)
+            {
+                bitstring_iter = 0;
+                ++bitstring_word_iter;
+            }
+            char c = ptr[i];
+            if (c == '1')
+            {
+                entry_ecmp->forwarding_bitmask[bitstring_word_iter] += 1 << bitstring_iter;
+            }
+            ++bitstring_iter;
+        }
+
+        ptr = strtok(NULL, delim);
+        if (ptr == NULL)
+        {
+            goto empty_string;
+        }
+        struct sockaddr_in6 bfr_nei_addr;
+        memset(&bfr_nei_addr, 0, sizeof(struct sockaddr_in6));
+        bfr_nei_addr.sin6_family = AF_INET6;
+        // Must also clean the '\n' of the string
+        clean_line_break(ptr);
+        if (inet_pton(AF_INET6, ptr, bfr_nei_addr.sin6_addr.s6_addr) != 1)
+        {
+            fprintf(stderr, "Cannot convert neighbour address: %s\n", ptr);
+            perror("inet_ntop bfr_nei_addr");
+            return NULL;
+        }
+
+        entry_ecmp->bfr_nei_addr = bfr_nei_addr;
+        bier_entry->ecmp_entry[i_ecmp] = entry_ecmp;
+    }
     bier_entry->bfr_id = bfr_id;
-    bier_entry->bfr_nei_addr = bfr_nei_addr;
 
     return bier_entry;
 
 empty_string:
+    // TODO: adapt and clean that
     fprintf(stderr, "Empty string: not complete line\n");
-    if (bier_entry)
+    /*if (bier_entry)
     {
         if (bier_entry->forwarding_bitmask)
         {
             free(bier_entry->forwarding_bitmask);
         }
         free(bier_entry);
-    }
+    }*/
     return NULL;
 }
 
@@ -145,6 +193,13 @@ void free_bier_bft(bier_internal_t *bft)
     {
         if (bft->bft[i])
         {
+            for (int j = 0; j < bft->bft[i]->nb_ecmp_entries; ++j)
+            {
+                if (bft->bft[i]->ecmp_entry[j])
+                {
+                    free(bft->bft[i]->ecmp_entry[j]);
+                }
+            }
             free(bft->bft[i]);
         }
     }
@@ -284,8 +339,9 @@ bier_internal_t *read_config_file(char *config_filepath)
     struct sockaddr_in6 local_router = {
         .sin6_family = AF_INET6,
     };
+    char ptr[400];
     memcpy(bier_bft->local.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
-
+    printf("Bind to local address on router %u:  %s\n", bier_bft->local_bfr_id, inet_ntop(AF_INET6, bier_bft->local.sin6_addr.s6_addr, ptr, sizeof(ptr)));
     if (bind(bier_bft->socket, (struct sockaddr *)&local_router, sizeof(local_router)) < 0)
     {
         perror("Bind local router");
@@ -296,13 +352,13 @@ bier_internal_t *read_config_file(char *config_filepath)
     return bier_bft;
 }
 
-void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op)
+void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op, int ecmp_entry)
 {
     uint32_t bitstring_max_idx = bft->bitstring_length / 64;
     for (uint32_t i = 0; i < bitstring_max_idx; ++i)
     {
         uint64_t bitstring = be64toh(bitstring_ptr[i]);
-        uint64_t bitmask = bft->bft[bfr_idx]->forwarding_bitmask[i];
+        uint64_t bitmask = bft->bft[bfr_idx]->ecmp_entry[ecmp_entry]->forwarding_bitmask[i];
         switch (op)
         {
         case bitwise_u64_and:
@@ -360,13 +416,13 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                     fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
                     fprintf(stderr, "Calling local processing function\n");
                     bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bitstring_length, bier_local_processing->args);
-                    update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
+                    update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not, 0);
                     bitstring = be64toh(bitstring_ptr[bitstring_idx]);
                     ++idx_bfr;
                     idx_bfr_word = idx_bfr % 64;
                     continue;
                 }
-                fprintf(stderr, "Send a copy to %u\n", idx_bfr + 1);
+                fprintf(stderr, "Send a copy to %u (router %u)\n", idx_bfr + 1, bft->local_bfr_id);
 
                 uint8_t packet_copy[buffer_length]; // Room for the IPv6 header
                 memset(packet_copy, 0, sizeof(packet_copy));
@@ -376,26 +432,41 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
 
                 uint64_t bitstring_copy[bitstring_max_idx];
                 memcpy(bitstring_copy, bitstring_ptr, sizeof(uint64_t) * bitstring_max_idx);
+
+                // ECMP may be possible
+                int ecmp_entry_idx = 0;
+                if (bft->bft[idx_bfr]->nb_ecmp_entries > 1)
+                {
+                    printf("Multiple paths for node %u\n", idx_bfr);
+                    uint16_t entropy = get_entropy(bier_header);
+                    ecmp_entry_idx = entropy % 2;
+                    // Choose an ECMP entry
+                    // TODO: for now, always choose the last entry but we need to compute a function of the entropy
+                }
                 // print_bitstring_message("Bitstring value copy is", bitstring_copy, bitstring_max_idx);
-                update_bitstring(bitstring_copy, bft, idx_bfr, bitwise_u64_and);
+                update_bitstring(bitstring_copy, bft, idx_bfr, bitwise_u64_and, ecmp_entry_idx);
                 set_bitstring_ptr(packet_copy, bitstring_copy, bitstring_max_idx);
                 // print_bitstring_message("Bitstring value copy is now", bitstring_copy, bitstring_max_idx);
 
                 // Send copy
                 bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
-                int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->bfr_nei_addr, sizeof(bft_entry->bfr_nei_addr));
+                char buff[400] = {};
+                printf("Should send to %s\n", inet_ntop(AF_INET6, bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.sin6_addr.s6_addr, buff, sizeof(buff)));
+                printf("The bitstirng is %lx\n", bitstring_copy[0]);
+                int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr, sizeof(bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");
                     return -1;
                 }
                 fprintf(stderr, "Sent packet\n");
-                update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not);
+                update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not, ecmp_entry_idx);
                 bitstring = be64toh(bitstring_ptr[bitstring_idx]);
             }
             ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
             idx_bfr_word = idx_bfr % 64;
         }
     }
+    fprintf(stderr, "Go out\n");
     return 0;
 }

@@ -30,8 +30,8 @@ void local_behaviour(const uint8_t *bier_packet, const uint32_t packet_length, c
     for (int i = 0; i < v6_packet_length; i++)
         fprintf(stderr, "%x", ipv6_packet[i]);
     fprintf(stderr, "\n");
-    if (sendto(raw_args->raw_socket, ipv6_packet, v6_packet_length, 0, (struct sockaddr *)&raw_args->dst, sizeof(raw_args->dst)) != v6_packet_length)
+    /*if (sendto(raw_args->raw_socket, ipv6_packet, v6_packet_length, 0, (struct sockaddr *)&raw_args->dst, sizeof(raw_args->dst)) != v6_packet_length)
     {
         perror("Cannot send using raw socket... ignoring");
-    }
+    }*/
 }
