@@ -6,6 +6,16 @@ pub trait Graph<T: Ord + Hash> {
     fn get_successors(&self, from: &T) -> Vec<(&T, i32)>;
 }
 
+impl Graph<usize> for Vec<Vec<(usize, i32)>> {
+    fn get_successors(&self, from: &usize) -> Vec<(&usize, i32)> {
+        self.get(*from)
+            .unwrap()
+            .iter()
+            .map(|(node, cost)| (node, *cost as i32))
+            .collect()
+    }
+}
+
 pub fn dijkstra<'a, T: Ord + Hash>(
     graph: &'a dyn Graph<T>,
     start: &'a T,
@@ -56,16 +66,6 @@ pub fn dijkstra<'a, T: Ord + Hash>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    impl Graph<usize> for Vec<Vec<(usize, i32)>> {
-        fn get_successors(&self, from: &usize) -> Vec<(&usize, i32)> {
-            self.get(*from)
-                .unwrap()
-                .iter()
-                .map(|(node, cost)| (node, *cost as i32))
-                .collect()
-        }
-    }
 
     #[test]
     fn test_dijkstra_dummy() {
