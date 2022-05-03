@@ -122,7 +122,7 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in
 
     // UDP Header
     struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];
-    udp_header->uh_dport = htons(5000);
+    udp_header->uh_dport = htons(53982);
     udp_header->uh_sport = htons(53983);
     udp_header->uh_ulen = htons(udp_header_length + payload_length);
 

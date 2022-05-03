@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
         }
         fprintf(stderr, "Sent a new packet!\n");
         my_packet_free(my_packet);
-        sleep(interval);
+        sleep((double)interval / 1000.0);
     }
 
     // Free entire system

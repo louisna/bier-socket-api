@@ -29,8 +29,6 @@ function bier_protocol.dissector(buffer, pinfo, tree)
 
     bsl_packet = buffer(5,1):bitfield(0,4)
     bitstring_length = 2^(bsl_packet + 5 - 3)  -- in bytes
-    print(bsl_packet)
-    print(bitstring_length)
     
     local subtree = tree:add(bier_protocol, buffer(), "BIER protocol data")
     subtree:add(bfit_id, buffer(0,3))
@@ -48,14 +46,8 @@ function bier_protocol.dissector(buffer, pinfo, tree)
     subtree:add(bfir_id, buffer(10,2))
     subtree:add(bitstring, buffer(12,bitstring_length))
     
-    if proto == 0x6 then
-        print("Wouais")
-    end
-    
     pproto = buffer(9):bitfield(2,6)
     if pproto == 0x6 then
-        print("OUAISIXISDOFIZFOIIQDFHGKIGHQER")
-        print(12 + bitstring_length)
         ipv6:call(buffer(12 + bitstring_length):tvb(), pinfo, tree)
     end
 end
