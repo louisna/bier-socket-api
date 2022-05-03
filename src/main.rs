@@ -1,6 +1,1 @@
-mod dijkstra;
-use dijkstra::{Graph, dijkstra};
-
-fn main() {
-
-}
+fn main() {}
