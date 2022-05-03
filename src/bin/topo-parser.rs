@@ -167,7 +167,7 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
         write_bier_table(&mut s, graph, &next_hop, node);
 
         // BIER-TE BIFT-ID
-        wirte_bier_te_table(&mut s, &graph_id, node, &link_to_bp, graph);
+        write_bier_te_table(&mut s, &graph_id, node, &link_to_bp, graph);
 
 
         println!("Pour node {}:\n{}", graph[node].name, s);
@@ -222,7 +222,7 @@ fn write_bier_table(s: &mut String, graph: &[Node], next_hop: &[Vec<usize>], nod
     }
 }
 
-fn wirte_bier_te_table(s: &mut String, graph_id: &[Vec<(usize, i32)>], node: usize, link_to_bp: &HashMap<(usize, usize), usize>, graph: &[Node]) {
+fn write_bier_te_table(s: &mut String, graph_id: &[Vec<(usize, i32)>], node: usize, link_to_bp: &HashMap<(usize, usize), usize>, graph: &[Node]) {
     let nb_nodes = graph_id.len();
 
     let nb_bp = nb_nodes + link_to_bp.len();
