@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
     }
 
     char *filename = argv[1];
-    bier_internal_t *bier = read_config_file(filename);
+    bier_bift_t *bier = read_config_file(filename);
     if (!bier)
     {
         exit(EXIT_FAILURE);
@@ -49,12 +49,13 @@ int main(int argc, char *argv[])
     local_bier_processing.local_processing_function = &local_behaviour;
     local_bier_processing.args = (void *)&raw_args;
 
-    print_bft(bier);
+    // print_bft(bier);
 
     uint16_t buffer_size = 1500;
     uint8_t *buffer = (uint8_t *)malloc(sizeof(uint8_t) * buffer_size);
     struct sockaddr_in6 remote = {};
     socklen_t remote_len = sizeof(remote);
+    /*
     while (1)
     {
         memset(buffer, 0, sizeof(uint8_t) * buffer_size);
@@ -69,8 +70,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "src %s\n", buf);
         bier_processing(buffer, length, bier, &local_bier_processing);
     }
+    */
 
     free(buffer);
-    fprintf(stderr, "Closing the program on router %u\n", bier->local_bfr_id);
+    fprintf(stderr, "Closing the program on router\n");
     free_bier_bft(bier);
 }

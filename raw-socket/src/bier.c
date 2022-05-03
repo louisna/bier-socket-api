@@ -187,85 +187,53 @@ empty_string:
     return NULL;
 }
 
-void free_bier_bft(bier_internal_t *bft)
+void free_bier_bft(bier_bift_t *bift)
 {
-    for (int i = 0; i < bft->nb_bft_entry; ++i)
+    for (int bift_id = 0; bift_id < bift->nb_bift; ++bift_id)
     {
-        if (bft->bft[i])
+        bier_internal_t *bft = bift->b[bift_id].bier; // bier_bift[bift_id];
+        for (int i = 0; i < bft->nb_bft_entry; ++i)
         {
-            for (int j = 0; j < bft->bft[i]->nb_ecmp_entries; ++j)
+            if (bft->bft[i])
             {
-                if (bft->bft[i]->ecmp_entry[j])
+                for (int j = 0; j < bft->bft[i]->nb_ecmp_entries; ++j)
                 {
-                    free(bft->bft[i]->ecmp_entry[j]);
+                    if (bft->bft[i]->ecmp_entry[j])
+                    {
+                        free(bft->bft[i]->ecmp_entry[j]);
+                    }
                 }
+                free(bft->bft[i]);
             }
-            free(bft->bft[i]);
         }
+        free(bft->bft);
+        free(bft);
     }
-    free(bft->bft);
-    if (bft->socket >= 0)
+    if (bift->socket >= 0)
     {
-        close(bft->socket);
+        close(bift->socket);
     }
-    free(bft);
+    free(bift);
 }
 
-// TODO: multiple checks:
-//   * do we read exactly once each entry?
-//   * do we have all entries?
-bier_internal_t *read_config_file(char *config_filepath)
+int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft)
 {
-    FILE *file = fopen(config_filepath, "r");
-    if (!file)
-    {
-        fprintf(stderr, "Impossible to open the config file: %s\n", config_filepath);
-        return NULL;
-    }
-
-    bier_internal_t *bier_bft = malloc(sizeof(bier_internal_t));
-    if (!bier_bft)
-    {
-        fprintf(stderr, "Cannot malloc\n");
-        perror("malloc-config");
-        return NULL;
-    }
-    memset(bier_bft, 0, sizeof(bier_internal_t));
-    bier_bft->socket = -1;
-
-    ssize_t readed = 0;
     char *line = NULL;
+    ssize_t readed = 0;
     size_t len = 0;
 
-    // First line is the local address
-    if ((readed = getline(&line, &len, file)) == -1)
-    {
-        fprintf(stderr, "Cannot get local address line\n");
-        free(bier_bft);
-        return NULL;
-    }
-
-    // The last byte is the '\n' => must erase it by inserting a 0
-    line[readed - 1] = '\0';
-    struct in6_addr local_addr = {};
-    if (inet_pton(AF_INET6, line, local_addr.s6_addr) != 1)
-    {
-        fprintf(stderr, "Cannot convert the local address: %s\n", line);
-        free(bier_bft);
-        return NULL;
-    }
     if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get number of entries line\n");
         free(bier_bft);
-        return NULL;
+        return -1;
     }
     int nb_bft_entry = atoi(line);
     if (nb_bft_entry == 0)
     {
         fprintf(stderr, "Cannot convert to nb bft entry: %s\n", line);
         free(bier_bft);
-        return NULL;
+        return -1;
     }
 
     bier_bft->nb_bft_entry = nb_bft_entry;
@@ -276,7 +244,7 @@ bier_internal_t *read_config_file(char *config_filepath)
     {
         fprintf(stderr, "Cannot malloc the bft!\n");
         free(bier_bft);
-        return NULL;
+        return -1;
     }
     memset(bier_bft->bft, 0, sizeof(bier_bft_entry_t *) * nb_bft_entry);
 
@@ -291,7 +259,7 @@ bier_internal_t *read_config_file(char *config_filepath)
             fprintf(stderr, "Too long bitstring length\n");
             free(bier_bft->bft);
             free(bier_bft);
-            return NULL;
+            return -1;
         }
     }
     bier_bft->bitstring_length = bitstring_length;
@@ -302,7 +270,7 @@ bier_internal_t *read_config_file(char *config_filepath)
         fprintf(stderr, "Cannot get the local BFR ID\n");
         free(bier_bft->bft);
         free(bier_bft);
-        return NULL;
+        return -1;
     }
     int local_bfr_id = atoi(line);
     if (local_bfr_id == 0)
@@ -310,29 +278,318 @@ bier_internal_t *read_config_file(char *config_filepath)
         fprintf(stderr, "Cannot convert to local BFR ID: %s\n", line);
         free(bier_bft->bft);
         free(bier_bft);
-        return NULL;
+        return -1;
     }
     bier_bft->local_bfr_id = local_bfr_id;
 
-    // Fill in the BFT with the remaining of the file
-    while ((readed = getline(&line, &len, file)) != -1)
+    // Fill in the BFT
+    for (int i = 0; i < nb_bft_entry; ++i)
     {
+        if ((readed = getline(&line, &len, file)) == -1)
+        {
+            fprintf(stderr, "Cannot get line configuration\n");
+            free(bier_bft->bft);
+            free(bier_bft);
+            return -1;
+        }
         bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length);
         if (!bft_entry)
         {
             fprintf(stderr, "Cannot parse line: %s\n", line);
-            free_bier_bft(bier_bft);
-            return NULL;
+            return -1;
         }
         bier_bft->bft[bft_entry->bfr_id - 1] = bft_entry; // bfr_id is one_indexed
     }
+    return 0;
+}
+
+int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
+{
+    char *line = NULL;
+    ssize_t readed = 0;
+    size_t len = 0;
+
+    if ((readed = getline(&line, &len, file)) != -1)
+    {
+        fprintf(stderr, "Cannot get number of BP\n");
+        return -1;
+    }
+    int nb_bp = atoi(line);
+    if (nb_bp == 0)
+    {
+        fprintf(stderr, "Cannot convert to nb bp: %s\n", line);
+        return -1;
+    }
+
+    uint32_t bitstring_length = 64;
+    while (bitstring_length < nb_bp)
+    {
+        bitstring_length <<= 1;
+        if (bitstring_length > 4096)
+        {
+            fprintf(stderr, "Too long bitstring length\n");
+            return -1;
+        }
+    }
+    bier_internal->bitstring_length = bitstring_length;
+    bier_internal->global_bitstring = (uint64_t *)malloc(sizeof(uint64_t) * (bitstring_length / 8));
+    if (!bier_internal->global_bitstring)
+    {
+        perror("Malloc bier internal global bitstring");
+        return -1;
+    }
+    memset(bier_internal->global_bitstring, 0, sizeof(uint64_t) * (bitstring_length / 8));
+
+    if ((readed = getline(&line, &len, file)) != -1)
+    {
+        fprintf(stderr, "Cannot get node bp id\n");
+        return -1;
+    }
+    int node_bp_id = atoi(line);
+    if (node_bp_id == 0)
+    {
+        fprintf(stderr, "Cannot convert to node bp id: %s\n", line);
+        return -1;
+    }
+
+    // Global bitstring
+    if ((readed = getline(&line, &len, file)) != -1)
+    {
+        fprintf(stderr, "Cannot get global bitstring\n");
+        return -1;
+    }
+    // Parse the string line a bit at a time because it may be too long to hold in a single number
+    uint64_t bitstring_iter = 0;
+    uint64_t bitstring_word_iter = 0;
+    int word_length = strlen(line);
+    for (int i = word_length - 1; i >= 0; --i)
+    {
+        if (bitstring_iter >= 64)
+        {
+            bitstring_iter = 0;
+            ++bitstring_word_iter;
+        }
+        char c = line[i];
+        if (c == '1')
+        {
+            bier_internal->global_bitstring[bitstring_word_iter] += 1 << bitstring_iter;
+        }
+        ++bitstring_iter;
+    }
+
+    if ((readed = getline(&line, &len, file)) != -1)
+    {
+        fprintf(stderr, "Cannot get nb entries in the map\n");
+        return -1;
+    }
+    int nb_entries = atoi(line);
+    if (nb_entries == 0)
+    {
+        fprintf(stderr, "Cannot convert to nb entries in the map: %s\n", line);
+        return -1;
+    }
+    bier_internal->nb_adjacencies = nb_entries;
+
+    // Parsing the lines
+    // It is only an array of sockaddr_in6. The index corresponds to the mapping of the BP of the adjacency bit
+    bier_internal->bfr_nei_addr = (struct sockaddr_in6 *)malloc(sizeof(struct sockaddr_in6) * nb_entries);
+    if (!bier_internal->bfr_nei_addr)
+    {
+        perror("Malloc bier te bfr nei addr");
+        return -1;
+    }
+    memset(bier_internal->bfr_nei_addr, 0, sizeof(struct sockaddr_in6) * nb_entries);
+
+    bier_internal->adj_to_bp = (int *)malloc(sizeof(int) * nb_entries);
+    if (!bier_internal->adj_to_bp)
+    {
+        perror("Malloc bier te adj to bp");
+        return -1;
+    }
+    memset(bier_internal->adj_to_bp, 0, sizeof(int) * nb_entries);
+
+    char delim[] = " ";
+    for (int i = 0; i < nb_entries; ++i)
+    {
+        if ((readed = getline(&line, &len, file)) != -1)
+        {
+            fprintf(stderr, "Cannot get line\n");
+            return -1;
+        }
+        char *ptr = strtok(line, delim);
+        if (ptr == NULL)
+        {
+            fprintf(stderr, "Cannot get bier te idx\n");
+            return -1;
+        }
+        int idx = atoi(ptr);
+        if (idx == 0)
+        {
+            fprintf(stderr, "Cannot convert to idx bier te\n");
+            return -1;
+        }
+        bier_internal->adj_to_bp[i] = idx;
+
+        ptr = strtok(NULL, delim);
+        if (ptr == NULL)
+        {
+            fprintf(stderr, "Cannot get bier te ECMP nb\n");
+            return -1;
+        }
+
+        // No ECMP for now
+        ptr = strtok(NULL, delim);
+        if (ptr == NULL)
+        {
+            fprintf(stderr, "Cannot get neigh address bier te\n");
+            return -1;
+        }
+        struct sockaddr_in6 bfr_nei_addr = {};
+        bfr_nei_addr.sin6_family = AF_INET6;
+        // Must also clean the '\n' of the string
+        clean_line_break(ptr);
+        if (inet_pton(AF_INET6, ptr, bfr_nei_addr.sin6_addr.s6_addr) != 1)
+        {
+            fprintf(stderr, "Cannot convert neighbour address bier te: %s\n", ptr);
+            perror("inet_ntop bfr_nei_addr");
+            return -1;
+        }
+        bier_internal->bfr_nei_addr[i] = bfr_nei_addr;
+    }
+    return 0;
+}
+
+// TODO: multiple checks:
+//   * do we read exactly once each entry?
+//   * do we have all entries?
+bier_bift_t *read_config_file(char *config_filepath)
+{
+    FILE *file = fopen(config_filepath, "r");
+    if (!file)
+    {
+        fprintf(stderr, "Impossible to open the config file: %s\n", config_filepath);
+        return NULL;
+    }
+
+    bier_bift_t *bier_bift = malloc(sizeof(bier_bift_t));
+    if (!bier_bift)
+    {
+        fprintf(stderr, "Cannot malloc\n");
+        perror("malloc-config");
+        return NULL;
+    }
+    memset(bier_bift, 0, sizeof(bier_bift_t));
+    bier_bift->socket = -1;
+
+    ssize_t readed = 0;
+    char *line = NULL;
+    size_t len = 0;
+
+    // First line is the local address
+    if ((readed = getline(&line, &len, file)) == -1)
+    {
+        fprintf(stderr, "Cannot get local address line\n");
+        free(bier_bift);
+        return NULL;
+    }
+
+    // The last byte is the '\n' => must erase it by inserting a 0
+    line[readed - 1] = '\0';
+    struct in6_addr local_addr = {};
+    if (inet_pton(AF_INET6, line, local_addr.s6_addr) != 1)
+    {
+        fprintf(stderr, "Cannot convert the local address: %s\n", line);
+        free(bier_bift);
+        return NULL;
+    }
+
+    if ((readed = getline(&line, &len, file)) == -1)
+    {
+        fprintf(stderr, "Cannot get number of BIFTs line\n");
+        free(bier_bift);
+        return NULL;
+    }
+    // Number of different BIFT (each with an increasing ID for now)
+    // TODO: generalize this
+    int nb_bifts = atoi(line);
+    if (nb_bifts == 0)
+    {
+        fprintf(stderr, "Cannot convert to nb bifts: %s\n", line);
+    }
+    bier_bift->nb_bift = nb_bifts;
+    bier_bift->b = (bier_bift_type_t *)malloc(sizeof(bier_bift_type_t) * nb_bifts);
+    if (!bier_bift->b)
+    {
+        perror("Malloc BIFTs");
+        free(bier_bift);
+        return NULL;
+    }
+
+    for (int bift_id = 0; bift_id < nb_bifts; ++bift_id)
+    {
+        if ((readed = getline(&line, &len, file)) == -1)
+        {
+            fprintf(stderr, "Cannot BIFT type line\n");
+            free(bier_bift);
+            return NULL;
+        }
+        int bift_type = atoi(line);
+        if (bift_type == 0)
+        {
+            fprintf(stderr, "Cannot convert to BIFT type: %s\n", line);
+            free(bier_bift->b);
+            free(bier_bift);
+            return NULL;
+        }
+        
+        // TODO: continue process
+        if (bift_type == BIER)
+        {
+            bier_internal_t *bier_internal = (bier_internal_t *)malloc(sizeof(bier_internal_t));
+            if (!bier_internal)
+            {
+                perror("Malloc bier_internal");
+                // TODO: free memory
+                return NULL;
+            }
+            memset(bier_internal, 0, sizeof(bier_internal_t));
+            bier_internal->bift_id = bift_id; // TODO: this must be more general (include an ID in the configuration?)
+            bier_bift->b[bift_id].bier = bier_internal;
+            if (fill_bier_internal_bier(file, bier_internal) != 0)
+            {
+                return NULL;
+            }
+        }
+        else if (bift_type == BIER_TE)
+        {
+            bier_te_internal_t *bier_internal = (bier_te_internal_t *)malloc(sizeof(bier_te_internal_t));
+            if (!bier_internal)
+            {
+                perror("Malloc bier_internal");
+                // TODO: free memory
+                return NULL;
+            }
+            memset(bier_internal, 0, sizeof(bier_te_internal_t));
+            bier_internal->bift_id = bift_id; // TODO: this must be more general (include an ID in the configuration?)
+            bier_bift->b[bift_id].bier_te = bier_internal;
+            if (fill_bier_internal_bier_te(file, bier_internal) != 0)
+            {
+                return NULL;
+            }
+        }
+        else
+        {
+            fprintf(stderr, "Unknown BIFT type: %d\n", bift_type);
+            return NULL;
+        }
+    }
 
     // Open raw socket to forward the packets
-    bier_bft->socket = socket(AF_INET6, SOCK_RAW, 253);
-    if (bier_bft->socket < 0)
+    bier_bift->socket = socket(AF_INET6, SOCK_RAW, 253);
+    if (bier_bift->socket < 0)
     {
         perror("socket BFT");
-        free_bier_bft(bier_bft);
+        free_bier_bft(bier_bift);
         return NULL;
     }
 
@@ -340,16 +597,16 @@ bier_internal_t *read_config_file(char *config_filepath)
         .sin6_family = AF_INET6,
     };
     char ptr[400];
-    memcpy(bier_bft->local.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
-    printf("Bind to local address on router %u:  %s\n", bier_bft->local_bfr_id, inet_ntop(AF_INET6, bier_bft->local.sin6_addr.s6_addr, ptr, sizeof(ptr)));
-    if (bind(bier_bft->socket, (struct sockaddr *)&local_router, sizeof(local_router)) < 0)
+    memcpy(bier_bift->local.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
+    printf("Bind to local address on router:  %s\n", inet_ntop(AF_INET6, bier_bift->local.sin6_addr.s6_addr, ptr, sizeof(ptr)));
+    if (bind(bier_bift->socket, (struct sockaddr *)&local_router, sizeof(local_router)) < 0)
     {
         perror("Bind local router");
-        free_bier_bft(bier_bft);
+        free_bier_bft(bier_bift);
         return NULL;
     }
 
-    return bier_bft;
+    return bier_bift;
 }
 
 void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op, int ecmp_entry)
@@ -453,12 +710,12 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                 char buff[400] = {};
                 printf("Should send to %s\n", inet_ntop(AF_INET6, bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.sin6_addr.s6_addr, buff, sizeof(buff)));
                 printf("The bitstirng is %lx\n", bitstring_copy[0]);
-                int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr, sizeof(bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
+                /*int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr, sizeof(bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");
                     return -1;
-                }
+                }*/
                 fprintf(stderr, "Sent packet\n");
                 update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not, ecmp_entry_idx);
                 bitstring = be64toh(bitstring_ptr[bitstring_idx]);

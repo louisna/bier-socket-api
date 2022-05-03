@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
     }
 
     char *filename = argv[1];
-    bier_internal_t *bier = read_config_file(filename);
+    bier_bift_t *bier = read_config_file(filename);
     if (!bier)
     {
         exit(EXIT_FAILURE);
@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
     local_bier_processing.local_processing_function = &local_behaviour;
     local_bier_processing.args = (void *)&raw_args;
 
-    print_bft(bier);
+    // print_bft(bier);
     char dummy_payload[10];
     uint64_t *id_packet = (uint64_t *)&dummy_payload[0];
     memset(dummy_payload, 0, sizeof(dummy_payload));
@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
         (*id_packet)++;
         fprintf(stderr, "Sending a new packet\n");
         set_entropy(my_packet->packet, (uint16_t)*id_packet);
-        err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
+        // err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
         if (err < 0)
         {
             fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");

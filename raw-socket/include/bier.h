@@ -64,6 +64,12 @@ typedef enum
     bitwise_u64_and
 } bitstring_operation;
 
+typedef enum
+{
+    BIER = 1,
+    BIER_TE = 2,
+} bier_type;
+
 /**
  * @brief Representation of an entry of the BIER Forwarding Table
  */
@@ -87,13 +93,39 @@ typedef struct
  */
 typedef struct
 {
+    uint32_t bift_id;
     int local_bfr_id;          // BFR-ID of the router in the network
-    struct sockaddr_in6 local; // Socket address with the loopback address of the router
     int nb_bft_entry;          // Number of entries in the BIER Forwarding Table
     uint32_t bitstring_length; // Represents the "BSL" in bits
-    int socket;                // Socket to send and receive packets
     bier_bft_entry_t **bft;    // Table of length `nb_bft_entry` containing all entries of the BIER Forwarding Table
 } bier_internal_t;
+
+typedef struct
+{
+    uint32_t bift_id;
+    int local_bfr_id;
+    uint32_t bitstring_length;
+    uint64_t *global_bitstring;
+    int nb_adjacencies;
+    struct sockaddr_in6 *bfr_nei_addr;
+    int *adj_to_bp;
+} bier_te_internal_t;
+
+typedef struct
+{
+    union {
+        bier_internal_t *bier;
+        bier_te_internal_t *bier_te;
+    };
+} bier_bift_type_t;
+
+typedef struct
+{
+    struct sockaddr_in6 local; // Socket address with the loopback address of the router
+    int socket;                // Socket to send and receive packets
+    int nb_bift;               // Number of different BIFT in the configuration
+    bier_bift_type_t *b;
+} bier_bift_t;
 
 /**
  * @brief Local processing function when the router receives a packet belonging to itself.
@@ -114,14 +146,14 @@ typedef struct
  * @param config_filepath path to the configuration file
  * @return bier_internal_t* structure containing the BFT information
  */
-bier_internal_t *read_config_file(char *config_filepath);
+bier_bift_t *read_config_file(char *config_filepath);
 
 /**
  * @brief Release the memory associated with the BIER Forwarding Table structure
  *
  * @param bft pointer to the BIER Forwarding Table structure
  */
-void free_bier_bft(bier_internal_t *bft);
+void free_bier_bft(bier_bift_t *bft);
 
 /**
  * @brief Process the packet given by *buffer* of length *buffer_length* using the BIER Forwarding Table *bft*.
@@ -135,6 +167,17 @@ void free_bier_bft(bier_internal_t *bft);
  * @return int error indication state
  */
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
+
+/**
+ * @brief Same as bier_processing but using the BIER-TE processing
+ * 
+ * @param buffer see bier_processing
+ * @param buffer_length see bier_processing
+ * @param bft see bier_processing
+ * @param bier_local_processing see bier_processing
+ * @return int error indication state
+ */
+int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table `bft`.
