@@ -28,6 +28,8 @@ struct Cli {
     output_file: String,
     #[structopt(long = "enable-te")]
     do_te: bool,
+    #[structopt(long = "te2bp")]
+    bier_te_to_bp: bool,
 }
 
 fn main() {
@@ -44,7 +46,7 @@ fn main() {
     let file = File::open(&args.topo_file).expect("Impossible to open the file");
     let reader = BufReader::new(file);
     let graph = parse_file(reader.lines(), node_to_id, id_to_address);
-    bier_config_build(&graph, &args.output_file, args.do_te).unwrap();
+    bier_config_build(&graph, &args.output_file, args.do_te, args.bier_te_to_bp).unwrap();
 }
 
 fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
@@ -136,7 +138,12 @@ fn links_to_bp(graph: &[Vec<(usize, i32)>]) -> HashMap<(usize, usize), usize> {
     return link_to_bp;
 }
 
-fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::Result<()> {
+fn bier_config_build(
+    graph: &[Node],
+    output_dir: &str,
+    do_te: bool,
+    bier_te_to_bp: bool,
+) -> std::io::Result<()> {
     let nb_nodes = (*graph).len(); // The * just to test
     let graph_id = graph_node_to_usize(graph);
     let link_to_bp = links_to_bp(&graph_id);
@@ -148,10 +155,10 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
         let next_hop: Vec<Vec<usize>> = (0..nb_nodes)
             .map(|i| get_all_out_interfaces_to_destination(&predecessors, node, i))
             .collect();
-        
+
         let nb_bift_id = match do_te {
             true => 2,
-            _ => 1,
+            false => 1,
         };
 
         let mut s = String::new();
@@ -180,6 +187,20 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
         };
         file.write_all(s.as_bytes())?;
     }
+    // Create an additional file with the mapping between
+    if bier_te_to_bp {
+        println!("Links to bp: {link:?}", link = link_to_bp);
+        let mut s = format!("{} {}\n", graph.len(), link_to_bp.len());
+        s += &graph.iter().fold(String::new(), |s, node| {
+            s + &format!("{id} {name}\n", id = node._id, name = node.name)
+        });
+        s += &link_to_bp.iter().fold(String::new(), |s, (&(a, b), &v)| s + &format!("{} {} {}\n", a, b, v));
+
+        let path = std::path::Path::new("mapping-link-to-bp.txt");
+        let mut file = File::create(&path)?;
+        file.write_all(s.as_bytes())?;
+    }
+
     Ok(())
 }
 
