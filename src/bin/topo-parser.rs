@@ -1,7 +1,6 @@
 use bier_rust::dijkstra::dijkstra;
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::env;
 use std::fmt::Write as fmtWrite;
 use std::fs::File;
 use std::hash::Hash;
@@ -28,16 +27,18 @@ struct Cli {
     #[structopt(short = "o")]
     output_file: String,
     #[structopt(long = "enable-te")]
-    do_te: bool
+    do_te: bool,
 }
 
 fn main() {
     let args = Cli::from_args();
 
-    let node_to_id_file = File::open(&args.node_2_id_file).expect("Impossible to open the node id mapping");
+    let node_to_id_file =
+        File::open(&args.node_2_id_file).expect("Impossible to open the node id mapping");
     let node_to_id = parse_node_to_id(node_to_id_file);
 
-    let id_to_address_file = File::open(&args.id_2_ipv6_file).expect("Impossible to open the id ipv6 mapping");
+    let id_to_address_file =
+        File::open(&args.id_2_ipv6_file).expect("Impossible to open the id ipv6 mapping");
     let id_to_address = parse_id_to_ipv6(id_to_address_file);
 
     let file = File::open(&args.topo_file).expect("Impossible to open the file");
@@ -147,7 +148,7 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
         let next_hop: Vec<Vec<usize>> = (0..nb_nodes)
             .map(|i| get_all_out_interfaces_to_destination(&predecessors, node, i))
             .collect();
-
+        
         let nb_bift_id = match do_te {
             true => 2,
             _ => 1,
@@ -156,19 +157,13 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
         let mut s = String::new();
 
         // Write constant information to the string
-        writeln!(
-            s,
-            "{}\n{}",
-            &graph[node].ipv6_addr_str,
-            nb_bift_id
-        ).unwrap();
+        writeln!(s, "{}\n{}", &graph[node].ipv6_addr_str, nb_bift_id).unwrap();
 
         // BIER (non-TE) BIFT-ID
         write_bier_table(&mut s, graph, &next_hop, node);
 
         // BIER-TE BIFT-ID
         write_bier_te_table(&mut s, &graph_id, node, &link_to_bp, graph);
-
 
         println!("Pour node {}:\n{}", graph[node].name, s);
         println!("L'id du node {}", graph[node]._id);
@@ -190,14 +185,8 @@ fn bier_config_build(graph: &[Node], output_dir: &str, do_te: bool) -> std::io::
 
 fn write_bier_table(s: &mut String, graph: &[Node], next_hop: &[Vec<usize>], node: usize) {
     let nb_nodes = (*graph).len(); // The * just to test
-    // Write name of the node and total number of nodes
-    writeln!(
-        s,
-        "1\n{}\n{}",
-        nb_nodes,
-        &graph[node]._id + 1
-    )
-    .unwrap();
+                                   // Write name of the node and total number of nodes
+    writeln!(s, "1\n{}\n{}", nb_nodes, &graph[node]._id + 1).unwrap();
     for bfr_id in 0..nb_nodes {
         let mut hops_vec = Vec::new();
         for &the_next_hop in &next_hop[bfr_id] {
@@ -222,17 +211,18 @@ fn write_bier_table(s: &mut String, graph: &[Node], next_hop: &[Vec<usize>], nod
     }
 }
 
-fn write_bier_te_table(s: &mut String, graph_id: &[Vec<(usize, i32)>], node: usize, link_to_bp: &HashMap<(usize, usize), usize>, graph: &[Node]) {
+fn write_bier_te_table(
+    s: &mut String,
+    graph_id: &[Vec<(usize, i32)>],
+    node: usize,
+    link_to_bp: &HashMap<(usize, usize), usize>,
+    graph: &[Node],
+) {
     let nb_nodes = graph_id.len();
 
     let nb_bp = nb_nodes + link_to_bp.len();
 
-    writeln!(
-        s,
-        "2\n{}\n{}",
-        nb_bp,
-        &graph[node]._id + 1
-    ).unwrap();
+    writeln!(s, "2\n{}\n{}", nb_bp, &graph[node]._id + 1).unwrap();
 
     // Global bitstring where only the adjacent bits are set, as well as the local bit
     let mut global_bitstring = (0..nb_bp).map(|_| false).collect::<Vec<bool>>();
@@ -240,34 +230,43 @@ fn write_bier_te_table(s: &mut String, graph_id: &[Vec<(usize, i32)>], node: usi
 
     for &(peer, _) in &graph_id[node] {
         let tuple = (usize::min(peer, node), usize::max(peer, node));
-        global_bitstring[*link_to_bp.get(&tuple).expect(&format!("Cannot find tuple in HashMap: {:?}", tuple))] = true;
+        global_bitstring[*link_to_bp
+            .get(&tuple)
+            .expect(&format!("Cannot find tuple in HashMap: {:?}", tuple))] = true;
     }
-    
+
     // Convert to string the global bitstring and write to the output
     writeln!(
         s,
         "{}",
-        global_bitstring.iter().rev().fold(String::new(), |folded, b| folded + match b {true => "1", _ => "0"})
-    ).unwrap();
-    
+        global_bitstring
+            .iter()
+            .rev()
+            .fold(String::new(), |folded, b| folded
+                + match b {
+                    true => "1",
+                    _ => "0",
+                })
+    )
+    .unwrap();
+
     // Write the number of entries in the local BIFT
-    writeln!(
-        s,
-        "{}",
-        graph_id[node].len()
-    ).unwrap();
+    writeln!(s, "{}", graph_id[node].len()).unwrap();
 
     // Write each entry. An entry is a local adjacency link with a BP
     for &(peer, _) in &graph_id[node] {
         let tuple = (usize::min(peer, node), usize::max(peer, node));
-        let bp = link_to_bp.get(&tuple).expect(&format!("Cannot find tuple in HashMap 2: {:?}", tuple));
+        let bp = link_to_bp
+            .get(&tuple)
+            .expect(&format!("Cannot find tuple in HashMap 2: {:?}", tuple));
         // For now, disable ECMP
         writeln!(
             s,
             "{} 1 {}",
             bp + 1, // 1-indexed
             graph[peer].ipv6_addr_str
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 

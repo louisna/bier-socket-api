@@ -42,7 +42,7 @@ typedef struct
  * @param bier_proto the value of the "proto" field of the BIER header (i.e., the next header)
  * @return bier_header_t* structure containing the ->_packet of ->header_length bytes (including the bitstring)
  */
-bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto);
+bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto, int bift_id);
 
 /**
  * @brief Release the memory associated with the BIER header

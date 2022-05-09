@@ -4,15 +4,9 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc < 4)
+    if (argc < 5)
     {
-        fprintf(stderr, "Usage: %s [config_file] [interval - ms] [bitstring]\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    if (argc < 4)
-    {
-        fprintf(stderr, "Usage: %s [config_file] [interval - ms] [bitstring]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [config_file] [interval - ms] [bitstring] [bifr-id]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -36,6 +30,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Cannot convert forwarding bitmask or no receiver is marked! Given: %s\n", argv[3]);
         exit(EXIT_FAILURE);
     }
+
+    int bift_id = atoi(argv[4]);
 
     // Destination of the multicast packet embedded in the BIER packet
     // This must be a multicast address
@@ -77,7 +73,7 @@ int main(int argc, char *argv[])
     memset(dummy_payload, 0, sizeof(dummy_payload));
 
     // Create the BIER packet header
-    bier_header_t *bh = init_bier_header(&bitstring_arg, 64, 6);
+    bier_header_t *bh = init_bier_header(&bitstring_arg, 64, 6, bift_id);
     if (!bh)
     {
         exit(EXIT_FAILURE);
@@ -93,7 +89,7 @@ int main(int argc, char *argv[])
         (*id_packet)++;
         fprintf(stderr, "Sending a new packet\n");
         set_entropy(my_packet->packet, (uint16_t)*id_packet);
-        // err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
+        err = bier_processing(my_packet->packet, my_packet->packet_length, bier, &local_bier_processing);
         if (err < 0)
         {
             fprintf(stderr, "Error when processing the BIER packet at the sender... exiting...\n");

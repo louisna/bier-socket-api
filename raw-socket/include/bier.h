@@ -21,7 +21,12 @@
 #include <signal.h>
 #include <netinet/udp.h>
 
-#define get_bift_id(data) (be32toh(((uint32_t *)data)[0]) >> 12)
+#define get_bift_id(data) ( be32toh( (( ((uint32_t *)data)[0]))) >> 12 )
+#define set_bier_bift_id(____data, ____bift_id)                                \
+    {                                                                     \
+        uint32_t *____d32 = (uint32_t *)____data;                         \
+        ____d32[0] = (htobe32(____bift_id << 12)) + (____d32[0] & 0xfff); \
+    }
 #define get_bitstring(data, bitstring_idx) (htobe64(*((uint64_t *)&((uint32_t *)data)[3 + bitstring_idx])))
 #define get_bitstring_ptr(data) ((uint64_t *)(&(data)[12]))
 #define set_bitstring(data, bitstring_idx, bitstring) \
@@ -113,7 +118,9 @@ typedef struct
 
 typedef struct
 {
-    union {
+    bier_type t;
+    union
+    {
         bier_internal_t *bier;
         bier_te_internal_t *bier_te;
     };
@@ -166,18 +173,20 @@ void free_bier_bft(bier_bift_t *bft);
  * @param bier_local_processing structure containing the function and additional arguments to handle a local packet
  * @return int error indication state
  */
-int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
+int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing);
 
 /**
  * @brief Same as bier_processing but using the BIER-TE processing
- * 
+ *
  * @param buffer see bier_processing
  * @param buffer_length see bier_processing
  * @param bft see bier_processing
  * @param bier_local_processing see bier_processing
  * @return int error indication state
  */
-int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing);
+int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing);
+
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_local_processing_t *bier_local_processing);
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table `bft`.

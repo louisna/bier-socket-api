@@ -55,14 +55,14 @@ int main(int argc, char *argv[])
     uint8_t *buffer = (uint8_t *)malloc(sizeof(uint8_t) * buffer_size);
     struct sockaddr_in6 remote = {};
     socklen_t remote_len = sizeof(remote);
-    /*
+
     while (1)
     {
         memset(buffer, 0, sizeof(uint8_t) * buffer_size);
         char buff[100];
         size_t length = recvfrom(bier->socket, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr *)&remote, &remote_len);
-        fprintf(stderr, "Received packet of length=%lu on router %d... from %s\n", length, bier->local_bfr_id, inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff, sizeof(buff)));
-        fprintf(stderr, "The BITSTIRNG on router %u is %x\n", bier->local_bfr_id, buffer[19]);
+        fprintf(stderr, "Received packet of length=%lu on router... from %s ", length, inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff, sizeof(buff)));
+        // fprintf(stderr, "The BITSTIRNG on router %u is %x\n", bier->local_bfr_id, buffer[19]);
         print_buffer(buffer, length);
         raw_args.src = remote.sin6_addr;
         char buf[100];
@@ -70,7 +70,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "src %s\n", buf);
         bier_processing(buffer, length, bier, &local_bier_processing);
     }
-    */
 
     free(buffer);
     fprintf(stderr, "Closing the program on router\n");

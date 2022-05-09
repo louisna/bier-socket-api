@@ -1,7 +1,7 @@
 #include "../include/bier.h"
 #include "../include/bier-sender.h"
 
-bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto)
+bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstring_length, uint8_t bier_proto, int bift_id)
 {
     bier_header_t *bh = (bier_header_t *)malloc(sizeof(bier_header_t));
     if (!bh)
@@ -31,6 +31,8 @@ bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstr
         set_bitstring(bh->_header, i, bitstring[i]);
     }
     set_bier_bsl(bh->_header, bier_bsl);
+
+    set_bier_bift_id(bh->_header, bift_id);
 
     return bh;
 }

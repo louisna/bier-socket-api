@@ -309,7 +309,7 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
     ssize_t readed = 0;
     size_t len = 0;
 
-    if ((readed = getline(&line, &len, file)) != -1)
+    if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get number of BP\n");
         return -1;
@@ -332,15 +332,15 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
         }
     }
     bier_internal->bitstring_length = bitstring_length;
-    bier_internal->global_bitstring = (uint64_t *)malloc(sizeof(uint64_t) * (bitstring_length / 8));
+    bier_internal->global_bitstring = (uint64_t *)malloc(sizeof(uint64_t) * (bitstring_length / 64));
     if (!bier_internal->global_bitstring)
     {
         perror("Malloc bier internal global bitstring");
         return -1;
     }
-    memset(bier_internal->global_bitstring, 0, sizeof(uint64_t) * (bitstring_length / 8));
+    memset(bier_internal->global_bitstring, 0, sizeof(uint64_t) * (bitstring_length / 64));
 
-    if ((readed = getline(&line, &len, file)) != -1)
+    if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get node bp id\n");
         return -1;
@@ -352,8 +352,10 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
         return -1;
     }
 
+    bier_internal->local_bfr_id = node_bp_id;
+
     // Global bitstring
-    if ((readed = getline(&line, &len, file)) != -1)
+    if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get global bitstring\n");
         return -1;
@@ -362,7 +364,8 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
     uint64_t bitstring_iter = 0;
     uint64_t bitstring_word_iter = 0;
     int word_length = strlen(line);
-    for (int i = word_length - 1; i >= 0; --i)
+    // Last char is a \n
+    for (int i = word_length - 2; i >= 0; --i)
     {
         if (bitstring_iter >= 64)
         {
@@ -377,7 +380,7 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
         ++bitstring_iter;
     }
 
-    if ((readed = getline(&line, &len, file)) != -1)
+    if ((readed = getline(&line, &len, file)) == -1)
     {
         fprintf(stderr, "Cannot get nb entries in the map\n");
         return -1;
@@ -411,7 +414,7 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal)
     char delim[] = " ";
     for (int i = 0; i < nb_entries; ++i)
     {
-        if ((readed = getline(&line, &len, file)) != -1)
+        if ((readed = getline(&line, &len, file)) == -1)
         {
             fprintf(stderr, "Cannot get line\n");
             return -1;
@@ -512,6 +515,7 @@ bier_bift_t *read_config_file(char *config_filepath)
     // Number of different BIFT (each with an increasing ID for now)
     // TODO: generalize this
     int nb_bifts = atoi(line);
+    printf("NB BIFT=%d\n", nb_bifts);
     if (nb_bifts == 0)
     {
         fprintf(stderr, "Cannot convert to nb bifts: %s\n", line);
@@ -555,6 +559,7 @@ bier_bift_t *read_config_file(char *config_filepath)
             memset(bier_internal, 0, sizeof(bier_internal_t));
             bier_internal->bift_id = bift_id; // TODO: this must be more general (include an ID in the configuration?)
             bier_bift->b[bift_id].bier = bier_internal;
+            bier_bift->b[bift_id].t = BIER;
             if (fill_bier_internal_bier(file, bier_internal) != 0)
             {
                 return NULL;
@@ -572,10 +577,12 @@ bier_bift_t *read_config_file(char *config_filepath)
             memset(bier_internal, 0, sizeof(bier_te_internal_t));
             bier_internal->bift_id = bift_id; // TODO: this must be more general (include an ID in the configuration?)
             bier_bift->b[bift_id].bier_te = bier_internal;
+            bier_bift->b[bift_id].t = BIER_TE;
             if (fill_bier_internal_bier_te(file, bier_internal) != 0)
             {
                 return NULL;
             }
+            printf("Test %d\n", bier_internal->adj_to_bp[0]);
         }
         else
         {
@@ -609,13 +616,12 @@ bier_bift_t *read_config_file(char *config_filepath)
     return bier_bift;
 }
 
-void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bfr_idx, bitstring_operation op, int ecmp_entry)
+void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask, bitstring_operation op, uint32_t bitstring_max_idx)
 {
-    uint32_t bitstring_max_idx = bft->bitstring_length / 64;
     for (uint32_t i = 0; i < bitstring_max_idx; ++i)
     {
         uint64_t bitstring = be64toh(bitstring_ptr[i]);
-        uint64_t bitmask = bft->bft[bfr_idx]->ecmp_entry[ecmp_entry]->forwarding_bitmask[i];
+        uint64_t bitmask = forwarding_bitmask[i];
         switch (op)
         {
         case bitwise_u64_and:
@@ -629,17 +635,8 @@ void update_bitstring(uint64_t *bitstring_ptr, bier_internal_t *bft, uint32_t bf
     }
 }
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, bier_local_processing_t *bier_local_processing)
+int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing)
 {
-    // As specified in RFC 8296, we cannot rely on the `bsl` field of the BIER header
-    // but we must know with the bift_id the true BSL
-    uint32_t bift_id = get_bift_id(buffer);
-    if (bift_id != 1 && 0)
-    {
-        fprintf(stderr, "Wrong BIFT_ID: must drop the packet: %u", bift_id);
-        return -1;
-    }
-
     // Remain as general as possible: handle all bitstring length
     uint32_t bitstring_max_idx = bft->bitstring_length / 64; // In 64 bits words
     uint32_t bitstring_length = bft->bitstring_length / 8;   // In bytes
@@ -673,7 +670,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                     fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
                     fprintf(stderr, "Calling local processing function\n");
                     bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bitstring_length, bier_local_processing->args);
-                    update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not, 0);
+                    update_bitstring(bitstring_ptr, bft->bft[idx_bfr]->ecmp_entry[0]->forwarding_bitmask, bitwise_u64_and_not, bitstring_max_idx);
                     bitstring = be64toh(bitstring_ptr[bitstring_idx]);
                     ++idx_bfr;
                     idx_bfr_word = idx_bfr % 64;
@@ -701,7 +698,7 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                     // TODO: for now, always choose the last entry but we need to compute a function of the entropy
                 }
                 // print_bitstring_message("Bitstring value copy is", bitstring_copy, bitstring_max_idx);
-                update_bitstring(bitstring_copy, bft, idx_bfr, bitwise_u64_and, ecmp_entry_idx);
+                update_bitstring(bitstring_copy, bft->bft[idx_bfr]->ecmp_entry[ecmp_entry_idx]->forwarding_bitmask, bitwise_u64_and, bitstring_max_idx);
                 set_bitstring_ptr(packet_copy, bitstring_copy, bitstring_max_idx);
                 // print_bitstring_message("Bitstring value copy is now", bitstring_copy, bitstring_max_idx);
 
@@ -710,14 +707,14 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
                 char buff[400] = {};
                 printf("Should send to %s\n", inet_ntop(AF_INET6, bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.sin6_addr.s6_addr, buff, sizeof(buff)));
                 printf("The bitstirng is %lx\n", bitstring_copy[0]);
-                /*int err = sendto(bft->socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr, sizeof(bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
+                int err = sendto(socket, packet_copy, sizeof(packet_copy), 0, (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr, sizeof(bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
                 if (err < 0)
                 {
                     perror("sendto");
                     return -1;
-                }*/
+                }
                 fprintf(stderr, "Sent packet\n");
-                update_bitstring(bitstring_ptr, bft, idx_bfr, bitwise_u64_and_not, ecmp_entry_idx);
+                update_bitstring(bitstring_ptr, bft->bft[idx_bfr]->ecmp_entry[ecmp_entry_idx]->forwarding_bitmask, bitwise_u64_and_not, bitstring_max_idx);
                 bitstring = be64toh(bitstring_ptr[bitstring_idx]);
             }
             ++idx_bfr; // Keep track of the index of the BFER to get the correct entry of the BFT
@@ -725,5 +722,92 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft,
         }
     }
     fprintf(stderr, "Go out\n");
+    return 0;
+}
+
+// TODO: inline
+bool get_bit_from_bitstring(uint64_t *bitstring, int bit_offset, int bitstring_length)
+{
+    printf("The bitstring is still %lx\n", bitstring[0]);
+    printf("Wanting %d, and result is %lx\n", bit_offset, be64toh(bitstring[bit_offset / 64]) & ((uint64_t)1 << (uint64_t)bit_offset));
+    return be64toh(bitstring[bit_offset / 64]) & ((uint64_t)1 << (uint64_t)bit_offset);
+}
+
+int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing)
+{
+    uint32_t bitstring_length_in_64 = bft->bitstring_length / 64; // In 64 bits words
+    // For BIER-TE the processing is slightly different
+    // See https://datatracker.ietf.org/doc/draft-ietf-bier-te-arch/ for more information
+    uint64_t *bitstring_ptr = get_bitstring_ptr(buffer);
+    // We only iterate over the adjacency BP and the local BFR-BP
+    // As we will clear those bits in the packet, we make a local copy
+    uint64_t local_bitstring[bitstring_length_in_64];
+    memset(local_bitstring, 0, sizeof(local_bitstring));
+    // TODO: possible segmentation fault? If the packet respects the bitstring length, should not happen
+    memcpy(local_bitstring, bitstring_ptr, sizeof(local_bitstring));
+    printf("the bitstring is %lx vs %lx\n", local_bitstring[0], bft->global_bitstring[0]);
+    
+    // Clear adjacent bits in the packet header to avoid loops
+    update_bitstring(bitstring_ptr, bft->global_bitstring, bitwise_u64_and_not, bitstring_length_in_64);
+    // Local delivery?
+    printf("Du coup apres update: %lx %d %d\n", local_bitstring[0], (1 << bft->local_bfr_id), get_bit_from_bitstring(local_bitstring, bft->local_bfr_id, bft->bitstring_length));
+    if (get_bit_from_bitstring(local_bitstring, bft->local_bfr_id, bft->bitstring_length))
+    {
+        fprintf(stderr, "BIER TE received a packet for local delivery on router %d", bft->local_bfr_id);
+        bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bft->bitstring_length / 8, bier_local_processing->args);
+    }
+
+    // Iterate over all adjacency BP instead of all bits in the bitstring
+    for (int i = 0; i < bft->nb_adjacencies; ++i)
+    {
+        int bp_this_adj = bft->adj_to_bp[i];
+        printf("Look if must send to bp this adj=%d\n", bp_this_adj);
+        if (get_bit_from_bitstring(local_bitstring, bp_this_adj - 1, bft->bitstring_length))
+        {
+            // Forward to this interface
+            // TODO: DNC bit?
+            // uint8_t packet_copy[buffer_length];
+            // memcpy(packet_copy, buffer, buffer_length);
+            // TODO: other things to modify?
+
+            struct sockaddr_in6 nei = bft->bfr_nei_addr[i];
+            char buff[400] = {};
+            fprintf(stderr, "Should send from %d to %s\n", bft->local_bfr_id, inet_ntop(AF_INET6, nei.sin6_addr.s6_addr, buff, sizeof(buff)));
+            int err = sendto(socket, buffer, buffer_length, 0, (struct sockaddr *)&nei, sizeof(nei));
+            if (err < 0)
+            {
+                perror("Cannot send packet");
+                return -1;
+            }
+            fprintf(stderr, "Sent packet TE\n");
+        }
+    }
+    return 0;
+}
+
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_local_processing_t *bier_local_processing)
+{
+    int bift_id = get_bift_id(buffer) - 1; // In the packet: 1-indexed, here 0-indexed
+    printf("The given BIFT-ID is %d\n", bift_id);
+    printf("NB BIFT=%d\n", bier->nb_bift);
+    if (bift_id >= bier->nb_bift)
+    {
+        fprintf(stderr, "BIFT-ID not supported, error state\n");
+        return -1;
+    }
+    bier_bift_type_t bift = bier->b[bift_id];
+    if (bift.t == BIER)
+    {
+        fprintf(stderr, "at router %d\n", bift.bier->local_bfr_id);
+        return bier_non_te_processing(buffer, buffer_length, bift.bier, bier->socket, bier_local_processing);
+    }
+    else if (bift.t == BIER_TE)
+    {
+        return bier_te_processing(buffer, buffer_length, bift.bier_te, bier->socket, bier_local_processing);
+    }
+    else
+    {
+        fprintf(stderr, "Should not happen: %d\n", bift.t);
+    }
     return 0;
 }
