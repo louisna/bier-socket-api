@@ -7,7 +7,7 @@ TFLAGS=-lcunit
 
 all: libs bier-bfr bier-bifr src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
 
-bier-bfr: bier-bfr.c src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o 
+bier-bfr: bier-bfr.c src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 bier-bifr: bier-bifr.c src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o

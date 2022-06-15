@@ -27,8 +27,9 @@ bier_payload_t *dummy_packet() {
         free(bier);
         return NULL;
     }
-    memset(bier->bitstring, 1, sizeof(uint8_t) * bitstring_length);
+    memset(bier->bitstring, 0, sizeof(uint8_t) * bitstring_length);
     bier->bitstring_length = bitstring_length;
+    bier->bitstring[0] = 0b11;
 
     int payload_length = 1000;
     bier->payload = (uint8_t *)malloc(sizeof(uint8_t) * payload_length);

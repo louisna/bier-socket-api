@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <poll.h>
 #include "include/qcbor-encoding.h"
+#include "bier-sender.h"
 
 void print_buffer(uint8_t *buffer, size_t length)
 {
@@ -176,6 +177,22 @@ int main(int argc, char *argv[])
                     // TODO: check error
 
                     printf("BIER payload of %lu bytes\n", bier_payload->payload_length);
+                    printf("BIER bitstring: ");
+                    for (int i = 0; i < bier_payload->bitstring_length; ++i) {
+                        printf("%d ", bier_payload->bitstring[i]);
+                    }
+                    printf("\n");
+                    // TODO: proto must be sent also, and BIFT-ID based on TE?
+                    bier_header_t *bh = init_bier_header((const uint64_t *)bier_payload->bitstring, bier_payload->bitstring_length * 8, 6, 1);
+                    // TODO: check error
+                    my_packet_t *packet = encap_bier_packet(bh, bier_payload->bitstring_length, bier_payload->payload);
+                    int err = bier_processing(packet->packet, packet->packet_length, bier, &local_bier_processing);
+                    if (err < 0) {
+                        fprintf(stderr, "Error when processing the BIER packet at the router... exiting...\n");
+                        my_packet_free(packet);
+                        break;
+                    }
+                    // bier_processing(bier_payload->payload, )
                     free_bier_payload(bier_payload);
                 }
             }
