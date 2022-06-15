@@ -3,6 +3,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <poll.h>
+#include "include/qcbor-encoding.h"
 
 void print_buffer(uint8_t *buffer, size_t length)
 {
@@ -15,6 +16,12 @@ void print_buffer(uint8_t *buffer, size_t length)
         printf("%x ", buffer[i]);
     }
     printf("\n");
+}
+
+void free_bier_payload(bier_payload_t *bier_payload) {
+    free(bier_payload->bitstring);
+    free(bier_payload->payload);
+    free(bier_payload);
 }
 
 int main(int argc, char *argv[])
@@ -108,7 +115,7 @@ int main(int argc, char *argv[])
     socklen_t remote_len = sizeof(remote);
 
     // UNIX socket buffer
-    size_t unix_buffer_size = sizeof(uint8_t) * (1500 + 4096 + 10);
+    size_t unix_buffer_size = sizeof(uint8_t) * (4096);
     uint8_t *unix_buffer = (uint8_t *)malloc(unix_buffer_size);
     if (!unix_buffer)
     {
@@ -150,14 +157,26 @@ int main(int argc, char *argv[])
                 {
                     fprintf(stderr, "UNIX socket\n");
                     // TODO: 
-                    ssize_t nb_read = read(pfds[i].fd, unix_buffer, unix_buffer_size);
+                    ssize_t nb_read = recv(pfds[i].fd, unix_buffer, unix_buffer_size, 0);
                     if (nb_read < 0)
                     {
                         perror("read");
                         break;
                     }
                     fprintf(stderr, "Received a message of length: %lu\n", nb_read);
-                    fprintf(stderr, "%s\n", unix_buffer);
+
+                    // Convert to recover the BIER packet
+                    bier_payload_t *bier_payload = (bier_payload_t *)malloc(sizeof(bier_payload_t));
+                    if (!bier_payload) {
+                        perror("malloc bier payload");
+                        break;
+                    }
+                    UsefulBufC cbor = {unix_buffer, nb_read};
+                    QCBORError uErr = decode_bier_payload(cbor, bier_payload);
+                    // TODO: check error
+
+                    printf("BIER payload of %lu bytes\n", bier_payload->payload_length);
+                    free_bier_payload(bier_payload);
                 }
             }
             else if (pfds[i].revents != 0)
