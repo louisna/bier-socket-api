@@ -3,6 +3,7 @@
 PCAP_DIR=/vagrant/pcaps
 LUA_SCRIPT_DIR=/vagrant/bier-rust/
 
+rm -rf $PCAP_DIR/json
 mkdir $PCAP_DIR/json
 for pcap_file in $(ls $PCAP_DIR)
 do

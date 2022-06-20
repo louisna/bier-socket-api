@@ -99,4 +99,6 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
  */
 my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh, struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, const uint8_t *payload);
 
+my_packet_t *create_ipv6_from_payload(struct sockaddr_in6 *mc_src, struct sockaddr_in6 *mc_dst, const uint32_t payload_length, const uint8_t *payload);
+
 #endif // BIER_SENDER_H

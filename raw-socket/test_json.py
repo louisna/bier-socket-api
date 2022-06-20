@@ -111,4 +111,6 @@ class TestPcapLength(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    os.system("sudo -E python3 /vagrant/topologies/testtt.py")
+    os.system("sudo ./parse_pcaps.sh")
     unittest.main()
