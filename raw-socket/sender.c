@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 5)
     {
-        fprintf(stderr, "Usage: %s <UNIX socket path> <nb packets to send> <bitstring> <bifr-id>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <UNIX socket path> <nb packets to send> <bitstring> <bift-id>\n", argv[0]);
         exit(EXIT_SUCCESS);
     }
     int socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0);

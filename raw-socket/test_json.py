@@ -2,6 +2,9 @@ import json
 import unittest
 import os
 
+MININET_SCRIPT_PATH = "/vagrant/topologies/testtt.py"
+JSONS_DIRECTORY = "/vagrant/pcaps/json"
+
 
 def get_nb_packets(filepath):
     with open(filepath) as fd:
@@ -68,49 +71,63 @@ def link_to_pcap_json(id2item, node2intf, bit_position):
     return json_a, json_b
 
 
+def test_bier_te_generic(test: "TestPcapLength", bitstring: int = 0x1ff):
+    node2id, link2id, id2item, node2intf = parse_mapping_file("../mapping-link-to-bp.txt")
+
+    idx = 0
+    nb_theoric = 0
+    while bitstring >> idx > 0:
+        # Node bp
+        if idx < len(node2id): 
+            idx += 1
+            continue
+        json_a, json_b = link_to_pcap_json(id2item, node2intf, idx)
+        filepath_a = os.path.join(JSONS_DIRECTORY, json_a)
+        filepath_b = os.path.join(JSONS_DIRECTORY, json_b)
+        if nb_theoric == 0:
+            nb_theoric = get_nb_packets(filepath_a)
+        
+        print(filepath_a, filepath_b)
+        # Bit not set => should not receive traffic
+        if bitstring & (1 << idx) == 0:
+            test.assertEqual(get_nb_packets(filepath_a), 0)
+            test.assertEqual(get_nb_packets(filepath_b), 0)
+        else:
+            test.assertEqual(get_nb_packets(filepath_a), nb_theoric)
+            test.assertEqual(get_nb_packets(filepath_b), nb_theoric)
+        idx += 1
+
+
 class TestPcapLength(unittest.TestCase):
     def test(self):
-        directory = "../../pcaps/json"
+        os.system(f"sudo -E python3 {MININET_SCRIPT_PATH}")
+        os.system("sudo ./parse_pcaps.sh")
         mapping = {"a": 2, "b": 2, "c": 2, "d": 3, "e": 1}
-        theoric_nb = get_nb_packets(os.path.join(directory, "a-0.json"))
+        theoric_nb = get_nb_packets(os.path.join(JSONS_DIRECTORY, "a-0.json"))
         for node in mapping:
             for intf in range(mapping[node]):
-                filepath = os.path.join(directory, f"{node}-{intf}.json")
+                filepath = os.path.join(JSONS_DIRECTORY, f"{node}-{intf}.json")
                 if node == "d" and intf == 1 or node == "c" and intf == 1:
                     self.assertTrue(cmp_received_packets(filepath, 0))
                 else:
                     self.assertTrue(cmp_received_packets(filepath, theoric_nb))
     
     def test_bitstring(self):
-        directory = "../../pcaps/json"
-        node2id, link2id, id2item, node2intf = parse_mapping_file("../mapping-link-to-bp.txt")
-
-        bitstring = 0x2ff
-        idx = 0
-        nb_theoric = 0
-        while bitstring >> idx > 0:
-            # Node bp
-            if idx < len(node2id): 
-                idx += 1
-                continue
-            json_a, json_b = link_to_pcap_json(id2item, node2intf, idx)
-            filepath_a = os.path.join(directory, json_a)
-            filepath_b = os.path.join(directory, json_b)
-            if nb_theoric == 0:
-                nb_theoric = get_nb_packets(filepath_a)
-            
-            print(filepath_a, filepath_b)
-            # Bit not set => should not receive traffic
-            if bitstring & (1 << idx) == 0:
-                self.assertEqual(get_nb_packets(filepath_a), 0)
-                self.assertEqual(get_nb_packets(filepath_b), 0)
-            else:
-                self.assertEqual(get_nb_packets(filepath_a), nb_theoric)
-                self.assertEqual(get_nb_packets(filepath_b), nb_theoric)
-            idx += 1
+        os.system(f"sudo -E python3 {MININET_SCRIPT_PATH}")
+        os.system("sudo ./parse_pcaps.sh")
+        test_bier_te_generic(self, 0x2ff)
+    
+    def test_bier_te(self):
+        os.system(f"sudo -E python3 {MININET_SCRIPT_PATH} --bitstring 2ff --bift-id 2")
+        os.system("sudo ./parse_pcaps.sh")
+        test_bier_te_generic(self,  0x2ff)
+    
+    def test_bier_te2(self):
+        os.system(f"sudo -E python3 {MININET_SCRIPT_PATH} --bitstring 1a4 --bift-id 2")
+        os.system("sudo ./parse_pcaps.sh")
+        test_bier_te_generic(self, 0x1a4)
+        # TODO: should parse the logs to see if the packet is correctly processed
 
 
 if __name__ == "__main__":
-    os.system("sudo -E python3 /vagrant/topologies/testtt.py")
-    os.system("sudo ./parse_pcaps.sh")
     unittest.main()

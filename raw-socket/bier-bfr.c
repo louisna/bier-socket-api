@@ -177,14 +177,14 @@ int main(int argc, char *argv[])
                     QCBORError uErr = decode_bier_payload(cbor, bier_payload);
                     // TODO: check error
 
-                    printf("BIER payload of %lu bytes\n", bier_payload->payload_length);
-                    printf("BIER bitstring: ");
+                    fprintf(stderr, "BIER payload of %lu bytes\n", bier_payload->payload_length);
+                    fprintf(stderr, "BIER bitstring: ");
                     for (int i = 0; i < bier_payload->bitstring_length; ++i) {
-                        printf("%x ", bier_payload->bitstring[i]);
+                        fprintf(stderr, "%x ", bier_payload->bitstring[i]);
                     }
-                    printf("\n");
+                    fprintf(stderr, "\n");
                     // TODO: proto must be sent also, and BIFT-ID based on TE?
-                    bier_header_t *bh = init_bier_header((const uint64_t *)bier_payload->bitstring, bier_payload->bitstring_length * 8, 6, 1);
+                    bier_header_t *bh = init_bier_header((const uint64_t *)bier_payload->bitstring, bier_payload->bitstring_length * 8, 6, bier_payload->use_bier_te);
                     // TODO: check error
                     my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length, bier_payload->payload);
                     int err = bier_processing(packet->packet, packet->packet_length, bier, &local_bier_processing);
