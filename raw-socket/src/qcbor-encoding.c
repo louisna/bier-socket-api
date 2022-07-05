@@ -8,7 +8,7 @@ UsefulBufC encode_bier_payload(UsefulBuf Buffer, const bier_payload_t *bier_payl
     QCBOREncodeContext EncodeCtx;
     QCBOREncode_Init(&EncodeCtx, Buffer);
     QCBOREncode_OpenMap(&EncodeCtx);
-    QCBOREncode_AddInt64ToMap(&EncodeCtx, "UseBierTE", 42);
+    QCBOREncode_AddInt64ToMap(&EncodeCtx, "UseBierTE", bier_payload->use_bier_te);
     UsefulBufC bitstring_buf = {bier_payload->bitstring, bier_payload->bitstring_length};
     QCBOREncode_AddBytesToMap(&EncodeCtx, "BitString", bitstring_buf);
     UsefulBufC payload_buf = {bier_payload->payload, bier_payload->payload_length};

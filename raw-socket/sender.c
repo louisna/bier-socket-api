@@ -133,8 +133,7 @@ int main(int argc, char *argv[])
     double interval = 500; // ms
 
     for (int i = 0; i < nb_packets_to_send; ++i) {
-        if (sendto(socket_fd, EncodedEngine.ptr, EncodedEngine.len, 0, (struct sockaddr *)&dst, sizeof(struct sockaddr_un)) == -1)
-        {
+        if (sendto(socket_fd, EncodedEngine.ptr, EncodedEngine.len, 0, (struct sockaddr *)&dst, sizeof(struct sockaddr_un)) == -1) {
             perror("sendto");
             exit(EXIT_FAILURE);
         }

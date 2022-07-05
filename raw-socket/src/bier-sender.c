@@ -13,7 +13,8 @@ bier_header_t *init_bier_header(const uint64_t *bitstring, const uint32_t bitstr
 
     const uint32_t bier_header_length = 12;
     const uint32_t bitstring_length_bytes = bitstring_length / 8;
-    const uint32_t bier_bsl = log2(bitstring_length) - 5;
+    // const uint32_t bier_bsl = 1; //log2(bitstring_length) - 5;
+    const uint32_t bier_bsl = (log(bitstring_length) / log(2)) - 5;
     bh->header_length = bier_header_length + bitstring_length_bytes;
 
     bh->_header = (uint8_t *)malloc(sizeof(uint8_t) * bh->header_length);
