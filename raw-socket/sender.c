@@ -131,15 +131,14 @@ int main(int argc, char *argv[])
     }
 
     double interval = 500; // ms
-
     for (int i = 0; i < nb_packets_to_send; ++i) {
         if (sendto(socket_fd, EncodedEngine.ptr, EncodedEngine.len, 0, (struct sockaddr *)&dst, sizeof(struct sockaddr_un)) == -1) {
             perror("sendto");
             exit(EXIT_FAILURE);
         }
-        sleep((double)interval / 1000.0);
+        fprintf(stderr, "Send a new packet of length: %u\n", EncodedEngine.len);
+        sleep(1);
     }
-
 
     // free_bier(bier);
     free(bier->payload);
