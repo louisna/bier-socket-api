@@ -1,17 +1,15 @@
-#include "include/bier.h"
-#include <sys/un.h>
 #include <errno.h>
-#include <poll.h>
-#include "include/qcbor-encoding.h"
-#include "bier-sender.h"
 #include <fcntl.h>
+#include <poll.h>
+#include <sys/un.h>
 
-void print_buffer(uint8_t *buffer, size_t length)
-{
-    for (size_t i = 0; i < length; ++i)
-    {
-        if (buffer[i] < 16)
-        {
+#include "bier-sender.h"
+#include "include/bier.h"
+#include "include/qcbor-encoding.h"
+
+void print_buffer(uint8_t *buffer, size_t length) {
+    for (size_t i = 0; i < length; ++i) {
+        if (buffer[i] < 16) {
             printf("0");
         }
         printf("%x ", buffer[i]);
@@ -25,33 +23,34 @@ void free_bier_payload(bier_payload_t *bier_payload) {
     free(bier_payload);
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc < 4)
-    {
-        fprintf(stderr, "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket>\n", argv[0]);
+int main(int argc, char *argv[]) {
+    if (argc < 4) {
+        fprintf(
+            stderr,
+            "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket>\n",
+            argv[0]);
         exit(EXIT_FAILURE);
     }
 
     char *filename = argv[1];
     bier_bift_t *bier = read_config_file(filename);
-    if (!bier)
-    {
+    if (!bier) {
         exit(EXIT_FAILURE);
     }
 
     const char *sending_socket_path = argv[2];
     const char *listening_socket_path = argv[3];
 
-    // This socket receives packets from the Application and sends them in the BIER network
+    // This socket receives packets from the Application and sends them in the
+    // BIER network
     int listening_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (listening_socket == -1)
-    {
+    if (listening_socket == -1) {
         perror("Listening UNIX socket");
         exit(EXIT_FAILURE);
     }
 
-    struct sockaddr_un app_addr = {}; // Destination is the application waiting for BIER packets
+    // Destination is the application waiting for BIER packets
+    struct sockaddr_un app_addr = {};
     app_addr.sun_family = AF_UNIX;
     strcpy(app_addr.sun_path, listening_socket_path);
 
@@ -60,7 +59,8 @@ int main(int argc, char *argv[])
     memcpy(&to_app.app_addr, &app_addr, sizeof(struct sockaddr_un));
     to_app.addrlen = sizeof(struct sockaddr_un);
 
-    // This socket is used to forward packets from the BIER network to the application
+    // This socket is used to forward packets from the BIER network to the
+    // application
     int sending_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (sending_socket == -1) {
         perror("Sending UNIX socket");
@@ -81,8 +81,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (bind(sending_socket, (struct sockaddr *)&unix_local, sizeof(struct sockaddr_un)) == -1)
-    {
+    if (bind(sending_socket, (struct sockaddr *)&unix_local,
+             sizeof(struct sockaddr_un)) == -1) {
         perror("Bind unix socket");
         close(sending_socket);
         close(listening_socket);
@@ -93,8 +93,7 @@ int main(int argc, char *argv[])
     // Allocate poll fds
     int nfds = 2;
     struct pollfd *pfds = (struct pollfd *)calloc(nfds, sizeof(struct pollfd));
-    if (!pfds)
-    {
+    if (!pfds) {
         perror("Calloc pfds");
         close(sending_socket);
         close(listening_socket);
@@ -116,55 +115,56 @@ int main(int argc, char *argv[])
     // UNIX socket buffer
     size_t unix_buffer_size = sizeof(uint8_t) * (4096);
     uint8_t *unix_buffer = (uint8_t *)malloc(unix_buffer_size);
-    if (!unix_buffer)
-    {
+    if (!unix_buffer) {
         perror("malloc unix buffer");
     }
     memset(unix_buffer, 0, unix_buffer_size);
 
-    while (1)
-    {
+    while (1) {
         fprintf(stderr, "About to poll...\n");
         int ready = poll(pfds, nfds, -1);
-        if (ready == -1)
-        {
+        if (ready == -1) {
             perror("Poll");
             break;
         }
 
         fprintf(stderr, "Ready: %d\n", ready);
-        for (int i = 0; i < nfds; ++i)
-        {
-            if (pfds[i].revents & POLLIN)
-            {
+        for (int i = 0; i < nfds; ++i) {
+            if (pfds[i].revents & POLLIN) {
                 fprintf(stderr, "Got a message from %d!\n", i);
-                if (i == 0)
-                {
+                if (i == 0) {
                     fprintf(stderr, "BIER socket\n");
                     memset(buffer, 0, sizeof(uint8_t) * buffer_size);
                     char buff[100];
-                    size_t length = recvfrom(pfds[i].fd, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr *)&remote, &remote_len);
-                    fprintf(stderr, "Received packet of length=%lu on router... from %s ", length, inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff, sizeof(buff)));
+                    size_t length = recvfrom(
+                        pfds[i].fd, buffer, sizeof(uint8_t) * buffer_size, 0,
+                        (struct sockaddr *)&remote, &remote_len);
+                    fprintf(
+                        stderr,
+                        "Received packet of length=%lu on router... from %s ",
+                        length,
+                        inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff,
+                                  sizeof(buff)));
                     print_buffer(buffer, length);
                     inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
                     fprintf(stderr, "src %s\n", buff);
                     memcpy(&to_app.src, &remote, sizeof(remote.sin6_addr));
                     bier_processing(buffer, length, bier, &to_app);
-                }
-                else
-                {
+                } else {
                     fprintf(stderr, "UNIX socket\n");
-                    // TODO: 
-                    ssize_t nb_read = recv(pfds[i].fd, unix_buffer, unix_buffer_size, 0);
-                    if (nb_read < 0)
-                    {
+                    // TODO:
+                    ssize_t nb_read =
+                        recv(pfds[i].fd, unix_buffer, unix_buffer_size, 0);
+                    if (nb_read < 0) {
                         perror("read");
                         break;
                     }
-                    fprintf(stderr, "Received a message of length: %lu\n", nb_read);
+                    fprintf(stderr, "Received a message of length: %lu\n",
+                            nb_read);
 
                     // Convert to recover the BIER packet
-                    bier_payload_t *bier_payload = (bier_payload_t *)malloc(sizeof(bier_payload_t));
+                    bier_payload_t *bier_payload =
+                        (bier_payload_t *)malloc(sizeof(bier_payload_t));
                     if (!bier_payload) {
                         perror("malloc bier payload");
                         break;
@@ -173,33 +173,40 @@ int main(int argc, char *argv[])
                     QCBORError uErr = decode_bier_payload(cbor, bier_payload);
                     // TODO: check error
 
-                    fprintf(stderr, "BIER payload of %lu bytes\n", bier_payload->payload_length);
+                    fprintf(stderr, "BIER payload of %lu bytes\n",
+                            bier_payload->payload_length);
                     fprintf(stderr, "BIER bitstring: ");
                     for (int i = 0; i < bier_payload->bitstring_length; ++i) {
                         fprintf(stderr, "%x ", bier_payload->bitstring[i]);
                     }
                     fprintf(stderr, "\n");
                     // TODO: proto must be sent also, and BIFT-ID based on TE?
-                    bier_header_t *bh = init_bier_header((const uint64_t *)bier_payload->bitstring, bier_payload->bitstring_length * 8, 6, bier_payload->use_bier_te);
+                    bier_header_t *bh = init_bier_header(
+                        (const uint64_t *)bier_payload->bitstring,
+                        bier_payload->bitstring_length * 8, 6,
+                        bier_payload->use_bier_te);
                     // TODO: check error
-                    my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length, bier_payload->payload);
+                    my_packet_t *packet =
+                        encap_bier_packet(bh, bier_payload->payload_length,
+                                          bier_payload->payload);
                     memset(&to_app.src, 0, sizeof(to_app.src));
-                    int err = bier_processing(packet->packet, packet->packet_length, bier, &to_app);
+                    int err = bier_processing(
+                        packet->packet, packet->packet_length, bier, &to_app);
                     if (err < 0) {
-                        fprintf(stderr, "Error when processing the BIER packet at the router... exiting...\n");
+                        fprintf(stderr,
+                                "Error when processing the BIER packet at the "
+                                "router... exiting...\n");
                         my_packet_free(packet);
                         break;
                     }
                     free_bier_payload(bier_payload);
                     release_bier_header(bh);
                 }
-            }
-            else if (pfds[i].revents != 0)
-            {
+            } else if (pfds[i].revents != 0) {
                 printf("  fd=%d; events: %s%s%s\n", pfds[i].fd,
-                               (pfds[i].revents & POLLIN)  ? "POLLIN "  : "",
-                               (pfds[i].revents & POLLHUP) ? "POLLHUP " : "",
-                               (pfds[i].revents & POLLERR) ? "POLLERR " : "");
+                       (pfds[i].revents & POLLIN) ? "POLLIN " : "",
+                       (pfds[i].revents & POLLHUP) ? "POLLHUP " : "",
+                       (pfds[i].revents & POLLERR) ? "POLLERR " : "");
             }
         }
     }

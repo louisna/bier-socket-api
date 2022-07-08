@@ -1,12 +1,12 @@
-#include <sys/un.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
 #include <arpa/inet.h>
-#include "include/public/bier.h"
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
+#include "include/public/bier.h"
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -43,18 +43,22 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stderr, "Bound to UNIX socket\n");
 
-    // Dummy listener: listen for packets and output the content on the standard output
+    // Dummy listener: listen for packets and output the content on the standard
+    // output
     char packet[4096];
     struct sockaddr src_received = {};
     char src_received_txt[150];
     socklen_t addrlen;
     while (1) {
-        ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet), &src_received, &addrlen);
-        if (inet_ntop(AF_INET6, &src_received, src_received_txt, addrlen) == NULL) {
+        ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet),
+                                         &src_received, &addrlen);
+        if (inet_ntop(AF_INET6, &src_received, src_received_txt, addrlen) ==
+            NULL) {
             perror("inet ntop");
             break;
         }
-        fprintf(stderr, "Received %lu bytes from %s\n", received, src_received_txt);
+        fprintf(stderr, "Received %lu bytes from %s\n", received,
+                src_received_txt);
         fprintf(stderr, "First few bytes are: ");
         for (int i = 0; i < 10; ++i) {
             fprintf(stderr, "%x ", packet[i]);
