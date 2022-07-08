@@ -5,12 +5,9 @@ INCLUDE_HEADERS_DIRECTORY=-Iinclude
 LIBS=-L$(LIBDIR)/QCBOR -lqcbor  -lm
 TFLAGS=-lcunit
 
-all: libs bier-bfr sender receiver src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o src/public_bier.o src/multicast.o
+all: libs bier-bfr sender receiver src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier-sender.o src/public_bier.o src/multicast.o
 
-bier-bfr: bier-bfr.c src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
-	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-bier-bifr: bier-bifr.c src/udp-checksum.o src/local-processing.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
+bier-bfr: bier-bfr.c src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 %.o: %.c
@@ -35,4 +32,4 @@ $(LIBDIR)/QCBOR/libqcbor.a:
 libs: $(LIBDIR)/QCBOR/libqcbor.a
 
 clean:
-	rm -f src/*.o *.o bier-bfr bier-bifr tests/test_bier tests/test_cbor sender receiver
+	rm -f src/*.o *.o bier-bfr tests/test_bier tests/test_cbor sender receiver

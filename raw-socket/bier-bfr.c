@@ -1,5 +1,4 @@
 #include "include/bier.h"
-#include "include/local-processing.h"
 #include <sys/un.h>
 #include <errno.h>
 #include <poll.h>
