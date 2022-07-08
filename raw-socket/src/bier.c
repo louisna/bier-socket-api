@@ -1,4 +1,5 @@
 #include "../include/bier.h"
+#include "../include/qcbor-encoding.h"
 
 void clean_line_break(char *line)
 {
@@ -635,7 +636,18 @@ void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask, bit
     }
 }
 
-int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing)
+int send_packet_to_application(uint8_t *payload, size_t payload_length, size_t bier_header_length, bier_application_t *to_app) {
+    size_t packet_length = payload_length - bier_header_length;
+    uint8_t *packet = &payload[bier_header_length];
+    bier_received_packet_t bier_received_packet = {};
+    memcpy(&bier_received_packet.ip6_encap_src, &to_app->src.sin6_addr, sizeof(to_app->src.sin6_addr));
+    bier_received_packet.payload = packet;
+    bier_received_packet.payload_length = packet_length;
+    int err = encode_local_bier_payload(to_app->application_socket, &bier_received_packet, &to_app->app_addr, to_app->addrlen);
+    fprintf(stderr, "DEBUG: combien enoyes: %d\n", err);
+}
+
+int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_application_t *to_app)
 {
     // Remain as general as possible: handle all bitstring length
     uint32_t bitstring_max_idx = bft->bitstring_length / 64; // In 64 bits words
@@ -669,7 +681,8 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_
                 {
                     fprintf(stderr, "Received a packet for local router %d!\n", bft->local_bfr_id);
                     fprintf(stderr, "Calling local processing function\n");
-                    bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bitstring_length, bier_local_processing->args);
+                    // bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bitstring_length, bier_local_processing->args);
+                    send_packet_to_application(buffer, buffer_length, 12 + bft->bitstring_length / 8, to_app);
                     update_bitstring(bitstring_ptr, bft->bft[idx_bfr]->ecmp_entry[0]->forwarding_bitmask, bitwise_u64_and_not, bitstring_max_idx);
                     bitstring = be64toh(bitstring_ptr[bitstring_idx]);
                     ++idx_bfr;
@@ -733,7 +746,7 @@ bool get_bit_from_bitstring(uint64_t *bitstring, int bit_offset, int bitstring_l
     return be64toh(bitstring[bit_offset / 64]) & ((uint64_t)1 << (uint64_t)bit_offset);
 }
 
-int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing)
+int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_application_t *to_app)
 {
     uint32_t bitstring_length_in_64 = bft->bitstring_length / 64; // In 64 bits words
     // For BIER-TE the processing is slightly different
@@ -754,7 +767,8 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t
     if (get_bit_from_bitstring(local_bitstring, bft->local_bfr_id, bft->bitstring_length))
     {
         fprintf(stderr, "BIER TE received a packet for local delivery on router %d", bft->local_bfr_id);
-        bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bft->bitstring_length / 8, bier_local_processing->args);
+        // bier_local_processing->local_processing_function(buffer, buffer_length, 12 + bft->bitstring_length / 8, bier_local_processing->args);
+        send_packet_to_application(buffer, buffer_length, 12 + bft->bitstring_length / 8, to_app);
     }
 
     // Iterate over all adjacency BP instead of all bits in the bitstring
@@ -785,11 +799,11 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t
     return 0;
 }
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_local_processing_t *bier_local_processing)
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_application_t *to_app)
 {
     int bift_id = get_bift_id(buffer) - 1; // In the packet: 1-indexed, here 0-indexed
-    printf("The given BIFT-ID is %d\n", bift_id);
-    printf("NB BIFT=%d\n", bier->nb_bift);
+    fprintf(stderr, "The given BIFT-ID is %d\n", bift_id);
+    fprintf(stderr, "NB BIFT=%d\n", bier->nb_bift);
     if (bift_id >= bier->nb_bift)
     {
         fprintf(stderr, "BIFT-ID not supported, error state\n");
@@ -799,11 +813,11 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bi
     if (bift.t == BIER)
     {
         fprintf(stderr, "at router %d\n", bift.bier->local_bfr_id);
-        return bier_non_te_processing(buffer, buffer_length, bift.bier, bier->socket, bier_local_processing);
+        return bier_non_te_processing(buffer, buffer_length, bift.bier, bier->socket, to_app);
     }
     else if (bift.t == BIER_TE)
     {
-        return bier_te_processing(buffer, buffer_length, bift.bier_te, bier->socket, bier_local_processing);
+        return bier_te_processing(buffer, buffer_length, bift.bier_te, bier->socket, to_app);
     }
     else
     {

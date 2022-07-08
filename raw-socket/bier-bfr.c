@@ -28,9 +28,9 @@ void free_bier_payload(bier_payload_t *bier_payload) {
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3)
+    if (argc < 4)
     {
-        fprintf(stderr, "Usage: %s <config_file> <unix_socket_path>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -41,58 +41,55 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    const char *unix_socket_path = argv[2];
+    const char *sending_socket_path = argv[2];
+    const char *listening_socket_path = argv[3];
 
-    // Local router behaviour
-    raw_socket_arg_t raw_args;
-    memset(&raw_args, 0, sizeof(raw_socket_arg_t));
-    raw_args.dst.sin6_family = AF_INET6;
-    memcpy(&raw_args.dst.sin6_addr, &bier->local, 16);
-    memcpy(&raw_args.src.s6_addr, &raw_args.dst.sin6_addr.s6_addr, sizeof(raw_args.src.s6_addr));
-
-    // TODO: able to change udp port (src, dst)
-    int local_socket_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
-    if (local_socket_fd < 0)
+    // This socket receives packets from the Application and sends them in the BIER network
+    int listening_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (listening_socket == -1)
     {
-        perror("socket loopback");
-        exit(EXIT_FAILURE);
-    }
-    raw_args.raw_socket = local_socket_fd;
-    bier_local_processing_t local_bier_processing;
-    memset(&local_bier_processing, 0, sizeof(bier_local_processing_t));
-    local_bier_processing.local_processing_function = &local_behaviour;
-    local_bier_processing.args = (void *)&raw_args;
-
-    // print_bft(bier);
-
-    // Open UNIX socket
-    int unix_socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (unix_socket_fd == -1)
-    {
-        perror("Unix socket");
+        perror("Listening UNIX socket");
         exit(EXIT_FAILURE);
     }
 
-    // TODO: path for UNIX socket dependent of the router name
+    struct sockaddr_un app_addr = {}; // Destination is the application waiting for BIER packets
+    app_addr.sun_family = AF_UNIX;
+    strcpy(app_addr.sun_path, listening_socket_path);
+
+    bier_application_t to_app = {};
+    to_app.application_socket = listening_socket;
+    memcpy(&to_app.app_addr, &app_addr, sizeof(struct sockaddr_un));
+    to_app.addrlen = sizeof(struct sockaddr_un);
+
+    // This socket is used to forward packets from the BIER network to the application
+    int sending_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (sending_socket == -1) {
+        perror("Sending UNIX socket");
+        close(listening_socket);
+        exit(EXIT_FAILURE);
+    }
+
     struct sockaddr_un unix_local = {};
     unix_local.sun_family = AF_UNIX;
-    strcpy(unix_local.sun_path, unix_socket_path);
+    strcpy(unix_local.sun_path, sending_socket_path);
     int data_len = strlen(unix_local.sun_path) + sizeof(unix_local.sun_family);
 
     // https://medium.com/swlh/getting-started-with-unix-domain-sockets-4472c0db4eb1
-    if (remove(unix_socket_path) == -1 && errno != ENOENT) {
+    if (remove(sending_socket_path) == -1 && errno != ENOENT) {
         perror("Remove unix socket path");
-        close(unix_socket_fd);
+        close(sending_socket);
+        close(listening_socket);
         exit(EXIT_FAILURE);
     }
 
-    if (bind(unix_socket_fd, (struct sockaddr *)&unix_local, sizeof(struct sockaddr_un)) == -1)
+    if (bind(sending_socket, (struct sockaddr *)&unix_local, sizeof(struct sockaddr_un)) == -1)
     {
         perror("Bind unix socket");
-        close(unix_socket_fd);
+        close(sending_socket);
+        close(listening_socket);
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Bound to UNIX socket!\n");
+    fprintf(stderr, "Bound to UNIX socket to listen to application packets!\n");
 
     // Allocate poll fds
     int nfds = 2;
@@ -100,12 +97,13 @@ int main(int argc, char *argv[])
     if (!pfds)
     {
         perror("Calloc pfds");
-        close(unix_socket_fd);
+        close(sending_socket);
+        close(listening_socket);
         exit(EXIT_FAILURE);
     }
 
     pfds[0].fd = bier->socket;
-    pfds[1].fd = unix_socket_fd;
+    pfds[1].fd = sending_socket;
 
     pfds[0].events = POLLIN;
     pfds[1].events = POLLIN;
@@ -148,12 +146,11 @@ int main(int argc, char *argv[])
                     char buff[100];
                     size_t length = recvfrom(pfds[i].fd, buffer, sizeof(uint8_t) * buffer_size, 0, (struct sockaddr *)&remote, &remote_len);
                     fprintf(stderr, "Received packet of length=%lu on router... from %s ", length, inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff, sizeof(buff)));
-                    // fprintf(stderr, "The BITSTIRNG on router %u is %x\n", bier->local_bfr_id, buffer[19]);
                     print_buffer(buffer, length);
-                    raw_args.src = remote.sin6_addr;
                     inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
                     fprintf(stderr, "src %s\n", buff);
-                    bier_processing(buffer, length, bier, &local_bier_processing);
+                    memcpy(&to_app.src, &remote, sizeof(remote.sin6_addr));
+                    bier_processing(buffer, length, bier, &to_app);
                 }
                 else
                 {
@@ -187,7 +184,8 @@ int main(int argc, char *argv[])
                     bier_header_t *bh = init_bier_header((const uint64_t *)bier_payload->bitstring, bier_payload->bitstring_length * 8, 6, bier_payload->use_bier_te);
                     // TODO: check error
                     my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length, bier_payload->payload);
-                    int err = bier_processing(packet->packet, packet->packet_length, bier, &local_bier_processing);
+                    memset(&to_app.src, 0, sizeof(to_app.src));
+                    int err = bier_processing(packet->packet, packet->packet_length, bier, &to_app);
                     if (err < 0) {
                         fprintf(stderr, "Error when processing the BIER packet at the router... exiting...\n");
                         my_packet_free(packet);
@@ -211,5 +209,6 @@ int main(int argc, char *argv[])
     free(unix_buffer);
     fprintf(stderr, "Closing the program on router\n");
     free_bier_bft(bier);
-    close(unix_socket_fd);
+    close(sending_socket);
+    close(listening_socket);
 }

@@ -4,12 +4,18 @@ import os
 
 MININET_SCRIPT_PATH = "/vagrant/topologies/testtt.py"
 JSONS_DIRECTORY = "/vagrant/pcaps/json"
+LOGS_DIRECTORY = "/vagrant/logs"
 
 
 def get_nb_packets(filepath):
     with open(filepath) as fd:
         data = json.load(fd)
     return len(data)
+
+
+def get_nb_app_packets(filepath):
+    with open(filepath) as fd:
+        return (len(fd.readlines()) - 1) / 2
 
 
 def cmp_received_packets(filepath, theoric):
@@ -77,24 +83,28 @@ def test_bier_te_generic(test: "TestPcapLength", bitstring: int = 0x1ff):
     idx = 0
     nb_theoric = 0
     while bitstring >> idx > 0:
-        # Node bp
-        if idx < len(node2id): 
-            idx += 1
-            continue
-        json_a, json_b = link_to_pcap_json(id2item, node2intf, idx)
-        filepath_a = os.path.join(JSONS_DIRECTORY, json_a)
-        filepath_b = os.path.join(JSONS_DIRECTORY, json_b)
-        if nb_theoric == 0:
-            nb_theoric = get_nb_packets(filepath_a)
-        
-        print(filepath_a, filepath_b)
-        # Bit not set => should not receive traffic
-        if bitstring & (1 << idx) == 0:
-            test.assertEqual(get_nb_packets(filepath_a), 0)
-            test.assertEqual(get_nb_packets(filepath_b), 0)
-        else:
-            test.assertEqual(get_nb_packets(filepath_a), nb_theoric)
-            test.assertEqual(get_nb_packets(filepath_b), nb_theoric)
+        if idx < len(node2id):  # Node bp
+            if bitstring & (1 << idx) == 0:  # Should not receive it
+                test.assertEqual(get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}.txt")), 0)
+            else:  # Should receive it
+                if nb_theoric == 0:
+                    nb_theoric = get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}.txt"))
+                test.assertEqual(get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}.txt")), nb_theoric)
+        else:  # Link bp
+            json_a, json_b = link_to_pcap_json(id2item, node2intf, idx)
+            filepath_a = os.path.join(JSONS_DIRECTORY, json_a)
+            filepath_b = os.path.join(JSONS_DIRECTORY, json_b)
+            if nb_theoric == 0:
+                nb_theoric = get_nb_packets(filepath_a)
+            
+            print(filepath_a, filepath_b)
+            # Bit not set => should not receive traffic
+            if bitstring & (1 << idx) == 0:
+                test.assertEqual(get_nb_packets(filepath_a), 0)
+                test.assertEqual(get_nb_packets(filepath_b), 0)
+            else:
+                test.assertEqual(get_nb_packets(filepath_a), nb_theoric)
+                test.assertEqual(get_nb_packets(filepath_b), nb_theoric)
         idx += 1
 
 

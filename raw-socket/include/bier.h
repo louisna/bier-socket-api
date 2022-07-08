@@ -19,6 +19,7 @@
 #include <netinet/ip6.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/un.h>
 #include <netinet/udp.h>
 
 #define get_bift_id(data) ( be32toh( (( ((uint32_t *)data)[0]))) >> 12 )
@@ -92,6 +93,13 @@ typedef struct
     int nb_ecmp_entries;
     bier_bft_entry_ecmp_t **ecmp_entry;
 } bier_bft_entry_t;
+
+typedef struct {
+    int application_socket;
+    socklen_t addrlen;
+    struct sockaddr_un app_addr;
+    struct sockaddr_in6 src;
+} bier_application_t;
 
 /**
  * @brief Representation of the state of a BIER Forwarding Router
@@ -173,7 +181,7 @@ void free_bier_bft(bier_bift_t *bft);
  * @param bier_local_processing structure containing the function and additional arguments to handle a local packet
  * @return int error indication state
  */
-int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing);
+int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_t *bft, int socket, bier_application_t *to_app);
 
 /**
  * @brief Same as bier_processing but using the BIER-TE processing
@@ -184,9 +192,9 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length, bier_internal_
  * @param bier_local_processing see bier_processing
  * @return int error indication state
  */
-int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_local_processing_t *bier_local_processing);
+int bier_te_processing(uint8_t *buffer, size_t buffer_length, bier_te_internal_t *bft, int socket, bier_application_t *to_app);
 
-int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_local_processing_t *bier_local_processing);
+int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier, bier_application_t *to_app);
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table `bft`.

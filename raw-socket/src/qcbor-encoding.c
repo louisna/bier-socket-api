@@ -69,3 +69,34 @@ QCBORError decode_bier_payload(UsefulBufC buffer, bier_payload_t *bier_payload) 
     uErr = QCBORDecode_Finish(&ctx);
     return uErr;
 }
+
+int encode_local_bier_payload(int socket, const bier_received_packet_t *bier_received_packet, const struct sockaddr_un *dest_addr, socklen_t addrlen) {
+    // Make room for other information
+    size_t qcbor_length = bier_received_packet->payload_length + sizeof(bier_received_packet->ip6_encap_src) + 200;
+    UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
+
+    QCBOREncodeContext ctx;
+    QCBOREncode_Init(&ctx, Buffer);
+    QCBOREncode_OpenMap(&ctx);
+
+    UsefulBufC payload_buf = { bier_received_packet->payload, bier_received_packet->payload_length };
+    QCBOREncode_AddBytesToMap(&ctx, "Payload", payload_buf);
+
+    UsefulBufC src_addr_buf = { &bier_received_packet->ip6_encap_src, sizeof(bier_received_packet->ip6_encap_src) };
+    QCBOREncode_AddBytesToMap(&ctx, "SourceAddr", src_addr_buf);
+
+    QCBOREncode_CloseMap(&ctx);
+
+    UsefulBufC EncodedCBOR;
+    QCBORError uErr;
+    uErr = QCBOREncode_Finish(&ctx, &EncodedCBOR);
+    if (uErr != QCBOR_SUCCESS) {
+        // TODO: update errno
+        fprintf(stderr, "L'erreur vient d'ici........\n");
+        return -1;
+    }
+
+    size_t nb_sent = sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0, (struct sockaddr *)dest_addr, addrlen);
+    return nb_sent;
+
+}

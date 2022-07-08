@@ -4,34 +4,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-#include "include/qcbor-encoding.h"
-#include "include/bier-sender.h"
+#include <arpa/inet.h>
+#include "include/public/bier.h"
+#include "include/public/multicast.h"
 
-void free_bier(bier_payload_t *bier_payload) {
-    free(bier_payload->bitstring);
-    free(bier_payload->payload);
-    free(bier_payload);
-}
-
-bier_payload_t *dummy_packet() {
-    bier_payload_t *bier = (bier_payload_t *)malloc(sizeof(bier_payload_t));
-    if (!bier) {
-        perror("malloc bier");
-        return NULL;
-    }
-    memset(bier, 0, sizeof(bier_payload_t));
-
-    int bitstring_length = 8; // In bytes
-    bier->bitstring = (uint8_t *)malloc(sizeof(uint8_t) * bitstring_length);
-    if (!bier->bitstring) {
-        perror("malloc bitstring");
-        free(bier);
-        return NULL;
-    }
-    memset(bier->bitstring, 0, sizeof(uint8_t) * bitstring_length);
-    bier->bitstring_length = bitstring_length;
-    bier->bitstring[0] = 0b11;
-
+my_packet_t *dummy_packet() {
     // Destination of the multicast packet embedded in the BIER packet
     // This must be a multicast address
     char *destination_address = "ff0:babe:cafe::1";
@@ -60,14 +37,8 @@ bier_payload_t *dummy_packet() {
     memset(payload, 0, sizeof(payload));
     payload[999] = 1;
     my_packet_t *packet = create_ipv6_from_payload(&mc_src, &mc_dst, sizeof(payload), payload);
-    bier->payload = packet->packet;
-    bier->payload_length = packet->packet_length;
-    bier->use_bier_te = 1;
-    
-    // Do not free the payload, it is passed by reference
-    free(packet);
 
-    return bier;
+    return packet;
 }
 
 int main(int argc, char *argv[])
@@ -112,37 +83,35 @@ int main(int argc, char *argv[])
     strcpy(dst.sun_path, argv[1]);
     int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
 
-    bier_payload_t *bier = dummy_packet();
-    if (!bier) {
+    my_packet_t *packet = dummy_packet();
+    if (!packet) {
         exit(EXIT_FAILURE);
     }
-    printf("First byte of payload: %x (%lu)\n", bier->payload[0], bier->payload_length);
+    printf("First byte of payload: %x (%lu bytes long)\n", packet->packet[0], packet->packet_length);
 
-    free(bier->bitstring);
-    bier->bitstring = (uint8_t *)&bitstring_arg;
-    bier->use_bier_te = bift_id; // TODO: change the name "use bier te"
-
-    UsefulBuf_MAKE_STACK_UB(Buffer, bier->bitstring_length + bier->payload_length + sizeof(bier->bitstring_length) + sizeof(bier->payload_length) + sizeof(bier->use_bier_te) + 200);
-    UsefulBufC EncodedEngine = encode_bier_payload(Buffer, bier);
-    if (UsefulBuf_IsNULLC(EncodedEngine)) {
-        perror("qcbor");
-        free_bier(bier);
-        exit(EXIT_FAILURE);
-    }
+    bier_info_t bier_info = {};
+    bier_info.bitstring = (uint8_t *)&bitstring_arg;
+    bier_info.bitstring_length = 8;
+    bier_info.bift_id = bift_id;
+    fprintf(stderr, "The BIFT-ID is %lu\n", bier_info.bift_id);
 
     double interval = 500; // ms
     for (int i = 0; i < nb_packets_to_send; ++i) {
-        if (sendto(socket_fd, EncodedEngine.ptr, EncodedEngine.len, 0, (struct sockaddr *)&dst, sizeof(struct sockaddr_un)) == -1) {
-            perror("sendto");
+        fprintf(stderr, "The first few bytes are: ");
+        for (int j = 0; j < 10; ++j) {
+            fprintf(stderr, "%x ", packet->packet[j]);
+        }
+        fprintf(stderr, "\n");
+        size_t nb_sent = sendto_bier(socket_fd, packet->packet, packet->packet_length, (struct sockaddr *)&dst, sizeof(dst), &bier_info);
+        if (nb_sent < 0) {
+            perror("Sender sendto_bier");
+            close(socket_fd);
             exit(EXIT_FAILURE);
         }
-        fprintf(stderr, "Send a new packet of length: %u\n", EncodedEngine.len);
+        fprintf(stderr, "Sent %lu bytes\n", nb_sent);
         sleep(1);
     }
 
-    // free_bier(bier);
-    free(bier->payload);
-    free(bier);
     close(socket_fd);
     exit(EXIT_SUCCESS);
 
