@@ -5,7 +5,7 @@ INCLUDE_HEADERS_DIRECTORY=-Iinclude
 LIBS=-L$(LIBDIR)/QCBOR -lqcbor  -lm
 TFLAGS=-lcunit
 
-all: libs bier-bfr sender receiver src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier-sender.o src/public_bier.o src/multicast.o
+all: libbier.a libs bier-bfr sender receiver src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier-sender.o src/public_bier.o src/multicast.o
 
 bier-bfr: bier-bfr.c src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier-sender.o
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
@@ -28,6 +28,9 @@ tests/%: tests/%.c src/bier.o src/qcbor-encoding.o
 
 $(LIBDIR)/QCBOR/libqcbor.a:
 	make -C $(LIBDIR)/QCBOR
+
+libbier.a: src/public_bier.o
+	ar -r $@ $^
 
 libs: $(LIBDIR)/QCBOR/libqcbor.a
 
