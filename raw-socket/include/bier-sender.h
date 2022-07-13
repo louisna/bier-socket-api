@@ -33,6 +33,12 @@ typedef struct {
     uint32_t header_length;
 } bier_header_t;
 
+typedef struct {
+    int nb_entries;
+    struct in6_addr *addrs;
+    uint64_t *bfr_ids;
+} bier_addr2bifr_t;
+
 /**
  * @brief Creates a BIER header with every field set to 0 except the bitstring,
  * the BSL and the proto fields

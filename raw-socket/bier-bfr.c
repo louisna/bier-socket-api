@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/un.h>
+#include <netinet/in.h>
 
 #include "bier-sender.h"
 #include "include/bier.h"
@@ -23,11 +24,95 @@ void free_bier_payload(bier_payload_t *bier_payload) {
     free(bier_payload);
 }
 
+int64_t get_id_from_address(struct in6_addr *addr, bier_addr2bifr_t *mapping) {
+    for (int i = 0; i < mapping->nb_entries; ++i) {
+        // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3], addr->s6_addr[3]);
+        if (memcmp(mapping->addrs[i].s6_addr, addr->s6_addr, sizeof(addr->s6_addr)) == 0) {
+            return mapping->bfr_ids[i];
+        }
+    }
+    return -1;
+}
+
+bier_addr2bifr_t *read_addr_mapping(char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        perror("read_addr_mapping");
+        return NULL;
+    }
+
+    bier_addr2bifr_t *mapping = (bier_addr2bifr_t *)malloc(sizeof(bier_addr2bifr_t));
+    if (!mapping) {
+        perror("read_addr_mapping malloc");
+        return NULL;
+    }
+    memset(mapping, 0, sizeof(bier_addr2bifr_t));
+
+    ssize_t readed = 0;
+    char *line = NULL;
+    size_t len = 0;
+
+    // First line is the number of entries in the file
+    if ((readed = getline(&line, &len, file)) == -1) {
+        perror("read_addr_mapping getline");
+        free(mapping);
+        return NULL;
+    }
+
+    int nb_entries = atoi(line);
+    if (nb_entries == 0) {
+        perror("read_addr_mapping atoi");
+        fprintf(stderr, "Cannot convert to int: %s\n", line);
+        return NULL;
+    }
+
+    mapping->nb_entries = nb_entries;
+    mapping->addrs = (struct in6_addr *)malloc(sizeof(struct in6_addr) * nb_entries);
+    if (!mapping->addrs) {
+        perror("read_addr_mapping_atoi malloc2");
+        return NULL;
+    }
+    mapping->bfr_ids = (uint64_t *)malloc(sizeof(uint64_t) * nb_entries);
+    if (!mapping->bfr_ids) {
+        perror("read_addr_mapping_atoi malloc3");
+        return NULL;
+    }
+    memset(mapping->addrs, 0, sizeof(struct in6_addr) * nb_entries);
+    memset(mapping->bfr_ids, 0, sizeof(uint64_t) * nb_entries);
+
+    for (int i = 0; i < nb_entries; ++i) {
+        if ((readed = getline(&line, &len, file)) == -1) {
+            perror("read_addr_mapping getline3");
+            return NULL;
+        }
+        char addr[100];
+        uint64_t id;
+        uint32_t prlength;
+
+        if (sscanf(line, "%lu %s\n", &id, addr) < 0) {
+            perror("sscanf");
+            return NULL;
+        }
+
+        // Parse into IPv6 address
+        if (inet_pton(AF_INET6, addr, mapping->addrs[i].s6_addr) != 1) {
+            perror("inet_pton");
+            fprintf(stderr, "Cannot convert to address: %s\n", addr);
+            fprintf(stderr, "Comprends aps %s - %u\n", addr, prlength);
+            return NULL;
+        }
+
+        mapping->bfr_ids[i] = id;
+    }
+
+    return mapping;
+}
+
 int main(int argc, char *argv[]) {
-    if (argc < 4) {
+    if (argc < 5) {
         fprintf(
             stderr,
-            "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket>\n",
+            "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket> <ipv6-2-id-mapping>\n",
             argv[0]);
         exit(EXIT_FAILURE);
     }
@@ -40,6 +125,11 @@ int main(int argc, char *argv[]) {
 
     const char *sending_socket_path = argv[2];
     const char *listening_socket_path = argv[3];
+
+    bier_addr2bifr_t *mapping = read_addr_mapping(argv[4]);
+    if (!mapping) {
+        exit(1);
+    }
 
     // This socket receives packets from the Application and sends them in the
     // BIER network
@@ -149,6 +239,8 @@ int main(int argc, char *argv[]) {
                     inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
                     fprintf(stderr, "src %s\n", buff);
                     memcpy(&to_app.src, &remote, sizeof(remote.sin6_addr));
+                    to_app.src_bfr_id = get_id_from_address(&remote.sin6_addr, mapping);
+                    // fprintf(stderr, "THE ID is %d\n", to_app.src_bfr_id);
                     bier_processing(buffer, length, bier, &to_app);
                 } else {
                     fprintf(stderr, "UNIX socket\n");

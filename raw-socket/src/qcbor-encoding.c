@@ -101,6 +101,8 @@ int encode_local_bier_payload(
                                sizeof(bier_received_packet->ip6_encap_src)};
     QCBOREncode_AddBytesToMap(&ctx, "SourceAddr", src_addr_buf);
 
+    QCBOREncode_AddInt64ToMap(&ctx, "UpStreamBfrId", bier_received_packet->upstream_router_bfr_id);
+
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;

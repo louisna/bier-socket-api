@@ -13,10 +13,10 @@ bier-bfr: bier-bfr.c src/udp-checksum.o src/qcbor-encoding.o src/bier.o src/bier
 %.o: %.c
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ -c $^
 
-sender: sender.c src/qcbor-encoding.o src/udp-checksum.o src/bier-sender.o src/multicast.o src/public_bier.o
+sender: sender.c src/udp-checksum.o src/multicast.o libbier.a
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-receiver: receiver.c src/public_bier.o
+receiver: receiver.c libbier.a
 	gcc $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 test: tests/test_bier tests/test_cbor

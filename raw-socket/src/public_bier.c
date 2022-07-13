@@ -3,16 +3,16 @@
 ssize_t sendto_bier(int socket, const void *buf, size_t len,
                     const struct sockaddr *dest_addr, socklen_t addrlen,
                     bier_info_t *bier_info) {
-    size_t qcbor_length = len + bier_info->bitstring_length +
+    size_t qcbor_length = len + bier_info->send_info.bitstring_length +
                           200;  // Make room for other information encoding
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
 
     QCBOREncodeContext ctx;
     QCBOREncode_Init(&ctx, Buffer);
     QCBOREncode_OpenMap(&ctx);
-    QCBOREncode_AddInt64ToMap(&ctx, "UseBierTE", bier_info->bift_id);
-    UsefulBufC bitstring_buf = {bier_info->bitstring,
-                                bier_info->bitstring_length};
+    QCBOREncode_AddInt64ToMap(&ctx, "UseBierTE", bier_info->send_info.bift_id);
+    UsefulBufC bitstring_buf = {bier_info->send_info.bitstring,
+                                bier_info->send_info.bitstring_length};
     QCBOREncode_AddBytesToMap(&ctx, "BitString", bitstring_buf);
     UsefulBufC payload_buf = {buf, len};
     QCBOREncode_AddBytesToMap(&ctx, "Payload", payload_buf);
@@ -32,7 +32,8 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
 }
 
 ssize_t recvfrom_bier(int socket, void *buf, size_t len,
-                      struct sockaddr *src_addr, socklen_t *addrlen) {
+                      struct sockaddr *src_addr, socklen_t *addrlen, bier_info_t *bier_info) {
+    memset(bier_info, 0, sizeof(bier_info_t));
     ssize_t nb_read_return = 0;
 
     // Read the QCBOR content from the UNIX socket from the BIER daemon
@@ -75,6 +76,12 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
         memcpy(src_addr, addr_buf.ptr, addr_buf.len);
         *addrlen = addr_buf.len;
     }
+
+    // BIER-ID of the upstream router of the packet
+    QCBORDecode_GetInt64InMapSZ(&ctx, "UpStreamBfrId", &bier_info->recv_info.upstream_router_bfr_id);
+    // fprintf(stderr, "------ AU DECODAGE on a %lu\n", bier_info->recv_info.upstream_router_bfr_id);
+    
+    QCBORDecode_ExitMap(&ctx);
 
     return nb_read_return;
 }

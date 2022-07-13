@@ -91,6 +91,7 @@ typedef struct {
 typedef struct {
     int application_socket;
     socklen_t addrlen;
+    int src_bfr_id;
     struct sockaddr_un app_addr;
     struct sockaddr_in6 src;
 } bier_application_t;

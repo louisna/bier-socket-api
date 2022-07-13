@@ -95,10 +95,10 @@ int main(int argc, char *argv[]) {
            packet->packet_length);
 
     bier_info_t bier_info = {};
-    bier_info.bitstring = (uint8_t *)&bitstring_arg;
-    bier_info.bitstring_length = 8;
-    bier_info.bift_id = bift_id;
-    fprintf(stderr, "The BIFT-ID is %lu\n", bier_info.bift_id);
+    bier_info.send_info.bitstring = (uint8_t *)&bitstring_arg;
+    bier_info.send_info.bitstring_length = 8;
+    bier_info.send_info.bift_id = bift_id;
+    fprintf(stderr, "The BIFT-ID is %lu\n", bier_info.send_info.bift_id);
 
     double interval = 500;  // ms
     for (int i = 0; i < nb_packets_to_send; ++i) {

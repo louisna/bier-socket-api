@@ -49,9 +49,10 @@ int main(int argc, char *argv[]) {
     struct sockaddr src_received = {};
     char src_received_txt[150];
     socklen_t addrlen;
+    bier_info_t bier_info;
     while (1) {
         ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet),
-                                         &src_received, &addrlen);
+                                         &src_received, &addrlen, &bier_info);
         if (inet_ntop(AF_INET6, &src_received, src_received_txt, addrlen) ==
             NULL) {
             perror("inet ntop");
@@ -59,6 +60,7 @@ int main(int argc, char *argv[]) {
         }
         fprintf(stderr, "Received %lu bytes from %s\n", received,
                 src_received_txt);
+        // fprintf(stderr, "The ID of the router that sent the packet: %ld\n", bier_info.recv_info.upstream_router_bfr_id);
         fprintf(stderr, "First few bytes are: ");
         for (int i = 0; i < 10; ++i) {
             fprintf(stderr, "%x ", packet[i]);

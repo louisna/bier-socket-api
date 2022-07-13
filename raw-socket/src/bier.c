@@ -542,7 +542,8 @@ bier_bift_t *read_config_file(char *config_filepath) {
     char ptr[400];
     memcpy(bier_bift->local.sin6_addr.s6_addr, local_addr.s6_addr,
            sizeof(local_addr.s6_addr));
-    printf("Bind to local address on router:  %s\n",
+    memcpy(local_router.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
+    fprintf(stderr, "Bind to local address on router:  %s\n",
            inet_ntop(AF_INET6, bier_bift->local.sin6_addr.s6_addr, ptr,
                      sizeof(ptr)));
     if (bind(bier_bift->socket, (struct sockaddr *)&local_router,
@@ -582,6 +583,7 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
            sizeof(to_app->src.sin6_addr));
     bier_received_packet.payload = packet;
     bier_received_packet.payload_length = packet_length;
+    bier_received_packet.upstream_router_bfr_id = to_app->src_bfr_id;
     int err = encode_local_bier_payload(to_app->application_socket,
                                         &bier_received_packet,
                                         &to_app->app_addr, to_app->addrlen);

@@ -12,9 +12,16 @@
 #include "qcbor/qcbor_spiffy_decode.h"
 
 typedef struct {
-    uint64_t bift_id;         // Inserted in the BIER header of the packet
-    size_t bitstring_length;  // Length of the bitstring in bytes
-    uint8_t *bitstring;       // Bitstring inserted in the BIER header
+    union {
+        struct {
+            uint64_t bift_id;         // Inserted in the BIER header of the packet
+            size_t bitstring_length;  // Length of the bitstring in bytes
+            uint8_t *bitstring;       // Bitstring inserted in the BIER header
+        } send_info;
+        struct {
+            uint64_t upstream_router_bfr_id;
+        } recv_info;
+    };
 } bier_info_t;
 
 /**
@@ -45,6 +52,6 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
  * @return ssize_t Number of bytes read from the UNIX socket
  */
 ssize_t recvfrom_bier(int socket, void *buf, size_t len,
-                      struct sockaddr *src_addr, socklen_t *addrlen);
+                      struct sockaddr *src_addr, socklen_t *addrlen, bier_info_t *bier_info);
 
 #endif
