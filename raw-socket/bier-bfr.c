@@ -52,17 +52,14 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     char *line = NULL;
     size_t len = 0;
 
-    // First line is the number of entries in the file
-    if ((readed = getline(&line, &len, file)) == -1) {
-        perror("read_addr_mapping getline");
-        free(mapping);
-        return NULL;
+    // Count the number of lines
+    int nb_entries = 0;
+    while ((readed = getline(&line, &len, file)) != 1) {
+        ++nb_entries;
     }
 
-    int nb_entries = atoi(line);
-    if (nb_entries == 0) {
-        perror("read_addr_mapping atoi");
-        fprintf(stderr, "Cannot convert to int: %s\n", line);
+    if (fseek(file, 0, SEEK_SET) == -1) {
+        perror("fseek");
         return NULL;
     }
 
@@ -89,7 +86,7 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
         uint64_t id;
         uint32_t prlength;
 
-        if (sscanf(line, "%lu %s\n", &id, addr) < 0) {
+        if (sscanf(line, "%lu %[^/]/%d\n", &id, addr, &prlength) < 0) {
             perror("sscanf");
             return NULL;
         }
