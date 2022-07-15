@@ -54,7 +54,7 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
 
     // Count the number of lines
     int nb_entries = 0;
-    while ((readed = getline(&line, &len, file)) != 1) {
+    while ((readed = getline(&line, &len, file)) != -1) {
         ++nb_entries;
     }
 
