@@ -73,7 +73,8 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC addr_buf = item.val.string;
         // TODO: check that it is not too long
-        memcpy(src_addr, addr_buf.ptr, addr_buf.len);
+        struct sockaddr_in6 *src_addr6 = (struct sockaddr_in6 *)src_addr;
+        memcpy(&src_addr6->sin6_addr, addr_buf.ptr, addr_buf.len);
         *addrlen = addr_buf.len;
     }
 
