@@ -1,4 +1,10 @@
+#include <errno.h>
+#include <stdio.h>
 #include "../include/public/bier.h"
+#include "qcbor/qcbor.h"
+#include "qcbor/qcbor_decode.h"
+#include "qcbor/qcbor_encode.h"
+#include "qcbor/qcbor_spiffy_decode.h"
 
 ssize_t sendto_bier(int socket, const void *buf, size_t len,
                     const struct sockaddr *dest_addr, socklen_t addrlen,
@@ -10,12 +16,12 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
     QCBOREncodeContext ctx;
     QCBOREncode_Init(&ctx, Buffer);
     QCBOREncode_OpenMap(&ctx);
-    QCBOREncode_AddInt64ToMap(&ctx, "UseBierTE", bier_info->send_info.bift_id);
+    QCBOREncode_AddInt64ToMap(&ctx, "bift_id", bier_info->send_info.bift_id);
     UsefulBufC bitstring_buf = {bier_info->send_info.bitstring,
                                 bier_info->send_info.bitstring_length};
-    QCBOREncode_AddBytesToMap(&ctx, "BitString", bitstring_buf);
+    QCBOREncode_AddBytesToMap(&ctx, "bitstring", bitstring_buf);
     UsefulBufC payload_buf = {buf, len};
-    QCBOREncode_AddBytesToMap(&ctx, "Payload", payload_buf);
+    QCBOREncode_AddBytesToMap(&ctx, "payload", payload_buf);
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;
@@ -56,7 +62,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
 
     // Payload and payload length
     QCBORDecode_EnterMap(&ctx, NULL);
-    QCBORDecode_GetItemInMapSZ(&ctx, "Payload", QCBOR_TYPE_BYTE_STRING, &item);
+    QCBORDecode_GetItemInMapSZ(&ctx, "payload", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC payload_buf = item.val.string;
         if (payload_buf.len > len) {
@@ -68,7 +74,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
     }
 
     // Source address of the neighbor sending the packet
-    QCBORDecode_GetItemInMapSZ(&ctx, "SourceAddr", QCBOR_TYPE_BYTE_STRING,
+    QCBORDecode_GetItemInMapSZ(&ctx, "source_addr", QCBOR_TYPE_BYTE_STRING,
                                &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC addr_buf = item.val.string;
@@ -79,7 +85,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
     }
 
     // BIER-ID of the upstream router of the packet
-    QCBORDecode_GetInt64InMapSZ(&ctx, "UpStreamBfrId", &bier_info->recv_info.upstream_router_bfr_id);
+    QCBORDecode_GetInt64InMapSZ(&ctx, "upstream_bifr", &bier_info->recv_info.upstream_router_bfr_id);
     // fprintf(stderr, "------ AU DECODAGE on a %lu\n", bier_info->recv_info.upstream_router_bfr_id);
     
     QCBORDecode_ExitMap(&ctx);

@@ -10,14 +10,14 @@ UsefulBufC encode_bier_payload(UsefulBuf Buffer,
     QCBOREncodeContext EncodeCtx;
     QCBOREncode_Init(&EncodeCtx, Buffer);
     QCBOREncode_OpenMap(&EncodeCtx);
-    QCBOREncode_AddInt64ToMap(&EncodeCtx, "UseBierTE",
+    QCBOREncode_AddInt64ToMap(&EncodeCtx, "bift_id",
                               bier_payload->use_bier_te);
     UsefulBufC bitstring_buf = {bier_payload->bitstring,
                                 bier_payload->bitstring_length};
-    QCBOREncode_AddBytesToMap(&EncodeCtx, "BitString", bitstring_buf);
+    QCBOREncode_AddBytesToMap(&EncodeCtx, "bitstring", bitstring_buf);
     UsefulBufC payload_buf = {bier_payload->payload,
                               bier_payload->payload_length};
-    QCBOREncode_AddBytesToMap(&EncodeCtx, "Payload", payload_buf);
+    QCBOREncode_AddBytesToMap(&EncodeCtx, "payload", payload_buf);
     QCBOREncode_CloseMap(&EncodeCtx);
 
     UsefulBufC EncodedCBOR;
@@ -39,10 +39,10 @@ QCBORError decode_bier_payload(UsefulBufC buffer,
     QCBORDecode_Init(&ctx, buffer, QCBOR_DECODE_MODE_NORMAL);
 
     QCBORDecode_EnterMap(&ctx, NULL);
-    QCBORDecode_GetInt64InMapSZ(&ctx, "UseBierTE",
+    QCBORDecode_GetInt64InMapSZ(&ctx, "bift_id",
                                 &(bier_payload->use_bier_te));
 
-    QCBORDecode_GetItemInMapSZ(&ctx, "BitString", QCBOR_TYPE_BYTE_STRING,
+    QCBORDecode_GetItemInMapSZ(&ctx, "bitstring", QCBOR_TYPE_BYTE_STRING,
                                &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC bitstring_buf = item.val.string;
@@ -57,7 +57,7 @@ QCBORError decode_bier_payload(UsefulBufC buffer,
         }
     }
 
-    QCBORDecode_GetItemInMapSZ(&ctx, "Payload", QCBOR_TYPE_BYTE_STRING, &item);
+    QCBORDecode_GetItemInMapSZ(&ctx, "payload", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC payload_buf = item.val.string;
         bier_payload->payload_length = payload_buf.len;
@@ -95,13 +95,13 @@ int encode_local_bier_payload(
 
     UsefulBufC payload_buf = {bier_received_packet->payload,
                               bier_received_packet->payload_length};
-    QCBOREncode_AddBytesToMap(&ctx, "Payload", payload_buf);
+    QCBOREncode_AddBytesToMap(&ctx, "payload", payload_buf);
 
     UsefulBufC src_addr_buf = {&bier_received_packet->ip6_encap_src,
                                sizeof(bier_received_packet->ip6_encap_src)};
-    QCBOREncode_AddBytesToMap(&ctx, "SourceAddr", src_addr_buf);
+    QCBOREncode_AddBytesToMap(&ctx, "source_addr", src_addr_buf);
 
-    QCBOREncode_AddInt64ToMap(&ctx, "UpStreamBfrId", bier_received_packet->upstream_router_bfr_id);
+    QCBOREncode_AddInt64ToMap(&ctx, "upstream_bifr", bier_received_packet->upstream_router_bfr_id);
 
     QCBOREncode_CloseMap(&ctx);
 

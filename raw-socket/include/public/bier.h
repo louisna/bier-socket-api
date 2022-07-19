@@ -1,15 +1,8 @@
 #ifndef __PUBLIC_BIER_H__
 #define __PUBLIC_BIER_H__
 
-#include <errno.h>
 #include <netinet/ip6.h>
 #include <stdint.h>
-#include <stdio.h>
-
-#include "qcbor/qcbor.h"
-#include "qcbor/qcbor_decode.h"
-#include "qcbor/qcbor_encode.h"
-#include "qcbor/qcbor_spiffy_decode.h"
 
 typedef struct {
     union {
