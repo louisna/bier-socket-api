@@ -26,6 +26,7 @@ typedef struct {
  * @param socket UNIX socket linked to the BIER daemon *towards* the BIER daemon
  * @param buf payload of the BIER packet
  * @param len length of `buf` in bytes
+ * @param proto the protocol number following the BIER header
  * @param bier_info Information inserted in the BIER header
  * @return ssize_t Number of bytes sent on the socket `socket`
  */
