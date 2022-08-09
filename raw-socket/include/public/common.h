@@ -15,7 +15,7 @@ typedef enum {
 typedef struct {
     char unix_path[NAME_MAX];     // Path to the UNIX socket of app using BIER
     uint16_t proto;               // Protocol following the BIER header
-    struct sockaddr mc_sockaddr;  // Multicast source of interest socket address
+    struct sockaddr_in6 mc_sockaddr;  // Multicast source of interest socket address
 } bier_bind_t;
 
 /* BIER Next Protocol Identifiers */

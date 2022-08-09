@@ -156,6 +156,13 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
     }
     
     bier_bind_t *bind = (bier_bind_t *)message;
+    fprintf(stderr, "Received a bind message for proto %d and UNIX path %s\n", bind->proto, bind->unix_path);
+    struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
+    fprintf(stderr, "Bound to: ");
+    for (int j = 0; j < 16; ++j) {
+        fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+    }
+    fprintf(stderr, "\n");
     bier_application_t *app = &all_apps->apps[all_apps->nb_apps];
     memset(app, 0, sizeof(bier_application_t));
     app->proto = bind->proto;
@@ -165,7 +172,7 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
 
     // Also add the IPv6 multicast address
     // TODO: currently only support for IPv6
-    if (bind->mc_sockaddr.sa_family != AF_INET6) {
+    if (bind->mc_sockaddr.sin6_family != AF_INET6) {
         fprintf(stderr, "Does not support other family than IPv6\n");
         return -1;
     } 

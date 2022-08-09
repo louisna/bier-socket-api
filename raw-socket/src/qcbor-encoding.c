@@ -144,6 +144,12 @@ bier_bind_t *decode_bier_bind(QCBORDecodeContext *ctx) {
         UsefulBufC mc_sockaddr_buf = item.val.string;
         memcpy(&bind->mc_sockaddr, mc_sockaddr_buf.ptr, mc_sockaddr_buf.len);
     }
+    struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
+    fprintf(stderr, "Bound to2: ");
+    for (int j = 0; j < 16; ++j) {
+        fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+    }
+    fprintf(stderr, "\n");
 
     uErr = QCBORDecode_GetError(ctx);
     if (uErr != QCBOR_SUCCESS) {

@@ -9,8 +9,8 @@
 #include "include/public/bier.h"
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <Listening UNIX socket>\n", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "Usage: %s <Listening UNIX socket> <IPv6 multicast listening address> <BIER daemon socket>\n", argv[0]);
         exit(EXIT_SUCCESS);
     }
 
@@ -35,6 +35,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Bind the UNIX socket for communication with the BIER daemon
     err = bind(socket_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un));
     if (err == -1) {
         perror("Bind unix socket");
@@ -42,6 +43,31 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     fprintf(stderr, "Bound to UNIX socket\n");
+
+    struct sockaddr_un dst =
+        {};  // Destination is UNIX socket running the BIER process
+    dst.sun_family = AF_UNIX;
+    strcpy(dst.sun_path, argv[3]);
+    int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
+
+    bier_bind_t bier_bind = {};
+    strcpy(bier_bind.unix_path, argv[1]);
+    bier_bind.proto = BIERPROTO_IPV6;
+    struct sockaddr_in6 mc_group = {
+        .sin6_family = AF_INET6,
+    };
+    if (inet_pton(AF_INET6, argv[2], &mc_group.sin6_addr.s6_addr) == 0) {
+        perror("IPv6 MC destination");
+        exit(EXIT_FAILURE);
+    }
+    memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
+
+    // "Bind" to IPv6 multicast address
+    if (bind_bier(socket_fd, &dst, &bier_bind) < 0) {
+        fprintf(stderr, "Confirmed\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "Bound to multicast address %s\n", argv[2]);
 
     // Dummy listener: listen for packets and output the content on the standard
     // output
@@ -53,13 +79,17 @@ int main(int argc, char *argv[]) {
     while (1) {
         ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet),
                                          &src_received, &addrlen, &bier_info);
+        fprintf(stderr, "Received %lu bytes from %s\n", received,
+                src_received_txt);
+        if (received < 0) {
+            perror("received bier");
+            break;
+        }
         if (inet_ntop(AF_INET6, &src_received, src_received_txt, addrlen) ==
             NULL) {
             perror("inet ntop");
             break;
         }
-        fprintf(stderr, "Received %lu bytes from %s\n", received,
-                src_received_txt);
         // fprintf(stderr, "The ID of the router that sent the packet: %ld\n", bier_info.recv_info.upstream_router_bfr_id);
         fprintf(stderr, "First few bytes are: ");
         for (int i = 0; i < 10; ++i) {

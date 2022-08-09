@@ -615,6 +615,7 @@ void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask,
 int find_correct_unix_destination(bier_all_apps_t *all_apps, uint8_t *payload, uint16_t bier_proto) {
     // TODO: currently only supports RAW and IPv6
     if (bier_proto != BIERPROTO_IPV6 && bier_proto != BIERPROTO_RESERVED_RAW) {
+        fprintf(stderr, "Not supported protocol\n");
         return -1;
     }
     struct in6_addr packet_ipv6_dst = {};
@@ -629,10 +630,20 @@ int find_correct_unix_destination(bier_all_apps_t *all_apps, uint8_t *payload, u
         
         // Hence must be IPv6 here
         if (all_apps->apps[i].mc_sockaddr.sa_family != AF_INET6) {
+            fprintf(stderr, "Err: the sockaddr family should be AF_INET6\n");
             return -1;
         }
         struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&all_apps->apps[i].mc_sockaddr;
-        if (memcpy(&addr->sin6_addr.s6_addr, &packet_ipv6_dst.s6_addr, sizeof(packet_ipv6_dst.s6_addr)) == 0) {
+        fprintf(stderr, "The received packet: ");
+        for (int j = 0; j < 16; ++j) {
+            fprintf(stderr, "%x ", packet_ipv6_dst.s6_addr[j]);
+        }
+        fprintf(stderr, "Bound to: ");
+        for (int j = 0; j < 16; ++j) {
+            fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+        }
+        fprintf(stderr, "\n");
+        if (memcmp(addr->sin6_addr.s6_addr, packet_ipv6_dst.s6_addr, sizeof(packet_ipv6_dst.s6_addr)) == 0) {
             return i;
         }
         

@@ -54,6 +54,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
         perror("read unix socket bier");
         return nb_read;
     }
+    fprintf(stderr, "local received: %ld\n", nb_read);
 
     // QCBOR decoding the data to make it "recvfrom" compatible
     UsefulBufC cbor = {tmp_buf, nb_read};
@@ -96,7 +97,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
     return nb_read_return;
 }
 
-int bind_bier(int socket, const struct sockaddr *bier_sock_path, bier_bind_t *bind_to) {
+int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bind_to) {
     size_t qcbor_length = sizeof(bier_bind_t) + 200; // Make room for other information encoding
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
 
@@ -110,7 +111,12 @@ int bind_bier(int socket, const struct sockaddr *bier_sock_path, bier_bind_t *bi
     QCBOREncode_AddInt64ToMap(&ctx, "proto", (uint64_t)bind_to->proto);
     UsefulBufC unix_path_buf = {bind_to->unix_path, NAME_MAX};
     QCBOREncode_AddBytesToMap(&ctx, "unix_path", unix_path_buf);
-    UsefulBufC mc_sockaddr_buf = {&bind_to->mc_sockaddr, sizeof(struct sockaddr_in)};
+    UsefulBufC mc_sockaddr_buf = {&bind_to->mc_sockaddr, sizeof(struct sockaddr_in6)};
+    struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind_to->mc_sockaddr;
+    fprintf(stderr, "Bound to2: ");
+    for (int j = 0; j < 16; ++j) {
+        fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+    }
     QCBOREncode_AddBytesToMap(&ctx, "mc_sockaddr", mc_sockaddr_buf);
     QCBOREncode_CloseMap(&ctx);
 
@@ -121,5 +127,11 @@ int bind_bier(int socket, const struct sockaddr *bier_sock_path, bier_bind_t *bi
         return -1;
     }
 
-    return 0; // Success
+    size_t nb_sent =
+        sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0, (struct sockaddr *)bier_sock_path, sizeof(struct sockaddr_un));
+    if (nb_sent < 0) {
+        perror("Cannot send bind information to BIER:");
+        return -1;
+    }
+    return 0;
 }

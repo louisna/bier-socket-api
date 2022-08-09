@@ -3,6 +3,8 @@
 
 #include <netinet/ip6.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include "common.h"
 
@@ -59,7 +61,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
  * @param bind_to Contains the binding information
  * @return int 0 if success, -1 otherwise
  */
-int bind_bier(int socket, const struct sockaddr *bier_sock_path,
+int bind_bier(int socket, const struct sockaddr_un *bier_sock_path,
               bier_bind_t *bind_to);
 
 #endif
