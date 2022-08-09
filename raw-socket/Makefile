@@ -35,4 +35,4 @@ libbier.a: src/public_bier.o
 libs: $(LIBDIR)/QCBOR/libqcbor.a
 
 clean:
-	rm -f src/*.o *.o bier-bfr tests/test_bier tests/test_cbor sender receiver
+	rm -f src/*.o *.o bier-bfr tests/test_bier tests/test_cbor sender receiver libbier.a

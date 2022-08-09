@@ -14,8 +14,10 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
 
     QCBOREncodeContext ctx;
+    fprintf(stderr, "First few bytes of bitstring: %x %x %x\n", bier_info->send_info.bitstring[0], bier_info->send_info.bitstring[1], bier_info->send_info.bitstring[2]);
     QCBOREncode_Init(&ctx, Buffer);
     QCBOREncode_OpenMap(&ctx);
+    QCBOREncode_AddInt64ToMap(&ctx, "type", PACKET);
     QCBOREncode_AddInt64ToMap(&ctx, "bift_id", bier_info->send_info.bift_id);
     UsefulBufC bitstring_buf = {bier_info->send_info.bitstring,
                                 bier_info->send_info.bitstring_length};

@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include "public/common.h"
 
 #define get_bift_id(data) (be32toh(((((uint32_t *)data)[0]))) >> 12)
 #define set_bier_bift_id(____data, ____bift_id)                           \
@@ -89,12 +90,20 @@ typedef struct {
 } bier_bft_entry_t;
 
 typedef struct {
-    int application_socket;
     socklen_t addrlen;
-    int src_bfr_id;
     struct sockaddr_un app_addr;
-    struct sockaddr_in6 src;
+    struct in6_addr mc_addr; // Application expects to receive packets from it
 } bier_application_t;
+
+#define BIER_MAX_APPS 10
+
+typedef struct {
+    int application_socket;
+    bier_application_t apps[BIER_MAX_APPS];
+    struct sockaddr_in6 src; // Source of the encapsulation header
+    int src_bfr_id;
+    int nb_apps; // Number of apps already using BIER
+} bier_all_apps_t;
 
 /**
  * @brief Representation of the state of a BIER Forwarding Router
@@ -186,7 +195,7 @@ void free_bier_bft(bier_bift_t *bft);
  */
 int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                            bier_internal_t *bft, int socket,
-                           bier_application_t *to_app);
+                           bier_all_apps_t *all_apps);
 
 /**
  * @brief Same as bier_processing but using the BIER-TE processing
@@ -199,10 +208,10 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
  */
 int bier_te_processing(uint8_t *buffer, size_t buffer_length,
                        bier_te_internal_t *bft, int socket,
-                       bier_application_t *to_app);
+                       bier_all_apps_t *all_apps);
 
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier,
-                    bier_application_t *to_app);
+                    bier_all_apps_t *all_apps);
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table

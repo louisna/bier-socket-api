@@ -10,8 +10,7 @@ UsefulBufC encode_bier_payload(UsefulBuf Buffer,
     QCBOREncodeContext EncodeCtx;
     QCBOREncode_Init(&EncodeCtx, Buffer);
     QCBOREncode_OpenMap(&EncodeCtx);
-    QCBOREncode_AddInt64ToMap(&EncodeCtx, "bift_id",
-                              bier_payload->use_bier_te);
+    QCBOREncode_AddInt64ToMap(&EncodeCtx, "bift_id", bier_payload->use_bier_te);
     UsefulBufC bitstring_buf = {bier_payload->bitstring,
                                 bier_payload->bitstring_length};
     QCBOREncode_AddBytesToMap(&EncodeCtx, "bitstring", bitstring_buf);
@@ -30,25 +29,23 @@ UsefulBufC encode_bier_payload(UsefulBuf Buffer,
     }
 }
 
-QCBORError decode_bier_payload(UsefulBufC buffer,
-                               bier_payload_t *bier_payload) {
-    QCBORDecodeContext ctx;
+bier_payload_t *decode_bier_payload(QCBORDecodeContext ctx) {
     QCBORError uErr;
     QCBORItem item;
 
-    QCBORDecode_Init(&ctx, buffer, QCBOR_DECODE_MODE_NORMAL);
+    bier_payload_t *bier_payload = (bier_payload_t *)malloc(sizeof(bier_payload_t));
+    if (!bier_payload) {
+        perror("malloc decode payload");
+        return NULL;
+    }
 
-    QCBORDecode_EnterMap(&ctx, NULL);
-    QCBORDecode_GetInt64InMapSZ(&ctx, "bift_id",
-                                &(bier_payload->use_bier_te));
+    QCBORDecode_GetInt64InMapSZ(&ctx, "bift_id", &(bier_payload->use_bier_te));
 
-    QCBORDecode_GetItemInMapSZ(&ctx, "bitstring", QCBOR_TYPE_BYTE_STRING,
-                               &item);
+    QCBORDecode_GetItemInMapSZ(&ctx, "bitstring", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC bitstring_buf = item.val.string;
         bier_payload->bitstring_length = bitstring_buf.len;
-        bier_payload->bitstring =
-            (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->bitstring_length);
+        bier_payload->bitstring = (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->bitstring_length);
         if (!bier_payload->bitstring) {
             perror("malloc");
         } else {
@@ -61,9 +58,8 @@ QCBORError decode_bier_payload(UsefulBufC buffer,
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC payload_buf = item.val.string;
         bier_payload->payload_length = payload_buf.len;
-        bier_payload->payload =
-            (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->payload_length);
-        if (!bier_payload->payload) {
+        bier_payload->payload = (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->payload_length);
+        if (0 && !bier_payload->payload) {
             perror("malloc");
         } else {
             memcpy(bier_payload->payload, payload_buf.ptr, payload_buf.len);
@@ -72,13 +68,12 @@ QCBORError decode_bier_payload(UsefulBufC buffer,
 
     uErr = QCBORDecode_GetError(&ctx);
     if (uErr != QCBOR_SUCCESS) {
-        return uErr;
+        free(bier_payload);
+        perror("decode message qcbor geterror");
+        return NULL;
     }
 
-    QCBORDecode_ExitMap(&ctx);
-
-    uErr = QCBORDecode_Finish(&ctx);
-    return uErr;
+    return bier_payload;
 }
 
 int encode_local_bier_payload(
@@ -101,7 +96,8 @@ int encode_local_bier_payload(
                                sizeof(bier_received_packet->ip6_encap_src)};
     QCBOREncode_AddBytesToMap(&ctx, "source_addr", src_addr_buf);
 
-    QCBOREncode_AddInt64ToMap(&ctx, "upstream_bifr", bier_received_packet->upstream_router_bfr_id);
+    QCBOREncode_AddInt64ToMap(&ctx, "upstream_bifr",
+                              bier_received_packet->upstream_router_bfr_id);
 
     QCBOREncode_CloseMap(&ctx);
 
@@ -117,4 +113,91 @@ int encode_local_bier_payload(
     size_t nb_sent = sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0,
                             (struct sockaddr *)dest_addr, addrlen);
     return nb_sent;
+}
+
+bier_bind_t *decode_bier_bind(QCBORDecodeContext *ctx) {
+    QCBORError uErr;
+    QCBORItem item;
+
+    bier_bind_t *bind = (bier_bind_t *)malloc(sizeof(bier_bind_t));
+    if (!bind) {
+        perror("malloc decode bind");
+        return NULL;
+    }
+    memset(bind, 0, sizeof(bier_bind_t));
+
+    QCBORDecode_GetItemInMapSZ(ctx, "unix_path", QCBOR_TYPE_BYTE_STRING, &item);
+    if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
+        UsefulBufC unix_path_buf = item.val.string;
+        memcpy(bind->unix_path, unix_path_buf.ptr, unix_path_buf.len);
+    }
+
+    QCBORDecode_GetItemInMapSZ(ctx, "mc_addr", QCBOR_TYPE_BYTE_STRING, &item);
+    if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
+        UsefulBufC mc_addr_buf = item.val.string;
+        memcpy(&bind->mc_addr, mc_addr_buf.ptr, mc_addr_buf.len);
+    }
+
+    uErr = QCBORDecode_GetError(ctx);
+    if (uErr != QCBOR_SUCCESS) {
+        free(bind);
+        perror("decode message qcbor geterror");
+        return NULL;
+    }
+
+    return bind;
+}
+
+void *decode_application_message(void *app_buf, ssize_t len,
+                                 bier_message_type *msg) {
+    UsefulBufC buffer = {app_buf, len};
+    QCBORDecodeContext ctx;
+    QCBORError uErr;
+
+    QCBORDecode_Init(&ctx, buffer, QCBOR_DECODE_MODE_NORMAL);
+    QCBORDecode_EnterMap(&ctx, NULL);
+
+    // Type indicator
+    int64_t type;
+    QCBORDecode_GetInt64InMapSZ(&ctx, "type", &type);
+    *msg = type;
+
+    switch (type) {
+        case PACKET: {
+            fprintf(stderr, "Will call PACKET decode\n");
+            bier_payload_t *payload = decode_bier_payload(ctx);
+            if (!payload) {
+                return NULL;
+            }
+            fprintf(stderr, "Payload BIER information: %lu %lu\n", payload->bitstring_length, payload->payload_length);
+
+            QCBORDecode_ExitMap(&ctx);
+            if (QCBORDecode_Finish(&ctx) != QCBOR_SUCCESS) {
+                fprintf(stderr, "ERROR HERE\n");
+                free(payload->bitstring);
+                free(payload->payload);
+                free(payload);
+                return NULL;
+            }
+
+            return (void *)payload;
+        }
+        case BIND: {
+            bier_bind_t *bind = decode_bier_bind(&ctx);
+            if (!bind) {
+                return NULL;
+            }
+            QCBORDecode_ExitMap(&ctx);
+            if (QCBORDecode_Finish(&ctx) != QCBOR_SUCCESS) {
+                free(bind);
+                return NULL;
+            }
+            return (void *)bind;
+        }
+        default:
+            fprintf(stderr, "Unsupported UNIX message type: %ld\n", type);
+            QCBORDecode_ExitMap(&ctx);
+            QCBORDecode_Finish(&ctx);
+            return NULL;
+    }
 }

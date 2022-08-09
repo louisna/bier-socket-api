@@ -1,8 +1,8 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <poll.h>
 #include <sys/un.h>
-#include <netinet/in.h>
 
 #include "bier-sender.h"
 #include "include/bier.h"
@@ -26,8 +26,10 @@ void free_bier_payload(bier_payload_t *bier_payload) {
 
 int64_t get_id_from_address(struct in6_addr *addr, bier_addr2bifr_t *mapping) {
     for (int i = 0; i < mapping->nb_entries; ++i) {
-        // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3], addr->s6_addr[3]);
-        if (memcmp(mapping->addrs[i].s6_addr, addr->s6_addr, sizeof(addr->s6_addr)) == 0) {
+        // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3],
+        // addr->s6_addr[3]);
+        if (memcmp(mapping->addrs[i].s6_addr, addr->s6_addr,
+                   sizeof(addr->s6_addr)) == 0) {
             return mapping->bfr_ids[i];
         }
     }
@@ -37,11 +39,13 @@ int64_t get_id_from_address(struct in6_addr *addr, bier_addr2bifr_t *mapping) {
 bier_addr2bifr_t *read_addr_mapping(char *filename) {
     FILE *file = fopen(filename, "r");
     if (!file) {
+        fprintf(stderr, "FIlename: %s\n", filename);
         perror("read_addr_mapping");
         return NULL;
     }
 
-    bier_addr2bifr_t *mapping = (bier_addr2bifr_t *)malloc(sizeof(bier_addr2bifr_t));
+    bier_addr2bifr_t *mapping =
+        (bier_addr2bifr_t *)malloc(sizeof(bier_addr2bifr_t));
     if (!mapping) {
         perror("read_addr_mapping malloc");
         return NULL;
@@ -64,7 +68,8 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     }
 
     mapping->nb_entries = nb_entries;
-    mapping->addrs = (struct in6_addr *)malloc(sizeof(struct in6_addr) * nb_entries);
+    mapping->addrs =
+        (struct in6_addr *)malloc(sizeof(struct in6_addr) * nb_entries);
     if (!mapping->addrs) {
         perror("read_addr_mapping_atoi malloc2");
         return NULL;
@@ -105,6 +110,62 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     return mapping;
 }
 
+int process_unix_message_is_payload(void *bier_payload_void,
+                                    bier_bift_t *bier,
+                                    bier_all_apps_t *all_apps) {
+    bier_payload_t *bier_payload = (bier_payload_t *)bier_payload_void;
+    fprintf(stderr, "BIER payload of %lu bytes\n",
+            bier_payload->payload_length);
+    fprintf(stderr, "BIER bitstring: ");
+    for (int i = 0; i < bier_payload->bitstring_length; ++i) {
+        fprintf(stderr, "%x ", bier_payload->bitstring[i]);
+    }
+    fprintf(stderr, "\n");
+    // TODO: proto must be sent also, and BIFT-ID based on TE?
+    bier_header_t *bh = init_bier_header(
+        (const uint64_t *)bier_payload->bitstring,
+        bier_payload->bitstring_length * 8, 6, bier_payload->use_bier_te);
+    // TODO: check error
+    my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length,
+                                            bier_payload->payload);
+    memset(&all_apps->src, 0, sizeof(all_apps->src));
+    int err =
+        bier_processing(packet->packet, packet->packet_length, bier, all_apps);
+    if (err < 0) {
+        fprintf(stderr,
+                "Error when processing the BIER packet at the "
+                "router... exiting...\n");
+        my_packet_free(packet); // TODO: the frees are not logical here
+        return -1;
+    }
+    free_bier_payload(bier_payload);
+    release_bier_header(bh);
+    return 0;
+}
+
+int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
+    if (all_apps->nb_apps >= BIER_MAX_APPS) {
+        fprintf(stderr, "Cannot add another application to BIER");
+        return -1;
+    }
+    
+    bier_bind_t *bind = (bier_bind_t *)message;
+    ++all_apps->nb_apps;
+
+    // Fill the address to the application to bind to address
+    bier_application_t *app = &all_apps->apps[all_apps->nb_apps];
+    memset(app, 0, sizeof(bier_application_t));
+    app->app_addr.sun_family = AF_UNIX;
+    strcpy(app->app_addr.sun_path, bind->unix_path);
+    app->addrlen = sizeof(struct sockaddr_un);
+
+    // Also add the IPv6 multicast address
+    memcpy(&app->mc_addr.s6_addr, bind->mc_addr.s6_addr, sizeof(app->mc_addr.s6_addr));
+    free(bind);
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 5) {
         fprintf(
@@ -136,15 +197,13 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Destination is the application waiting for BIER packets
-    struct sockaddr_un app_addr = {};
-    app_addr.sun_family = AF_UNIX;
-    strcpy(app_addr.sun_path, listening_socket_path);
-
-    bier_application_t to_app = {};
-    to_app.application_socket = listening_socket;
-    memcpy(&to_app.app_addr, &app_addr, sizeof(struct sockaddr_un));
-    to_app.addrlen = sizeof(struct sockaddr_un);
+    bier_all_apps_t *all_apps = (bier_all_apps_t *)malloc(sizeof(bier_all_apps_t));
+    if (!all_apps) {
+        perror("malloc all apps");
+        exit(EXIT_FAILURE);
+    }
+    memset(all_apps, 0, sizeof(bier_all_apps_t));
+    all_apps->application_socket = listening_socket;
 
     // This socket is used to forward packets from the BIER network to the
     // application
@@ -235,10 +294,11 @@ int main(int argc, char *argv[]) {
                     print_buffer(buffer, length);
                     inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
                     fprintf(stderr, "src %s\n", buff);
-                    memcpy(&to_app.src, &remote, sizeof(remote.sin6_addr));
-                    to_app.src_bfr_id = get_id_from_address(&remote.sin6_addr, mapping);
+                    memcpy(&all_apps->src, &remote, sizeof(remote.sin6_addr));
+                    all_apps->src_bfr_id =
+                        get_id_from_address(&remote.sin6_addr, mapping);
                     // fprintf(stderr, "THE ID is %d\n", to_app.src_bfr_id);
-                    bier_processing(buffer, length, bier, &to_app);
+                    bier_processing(buffer, length, bier, all_apps);
                 } else {
                     fprintf(stderr, "UNIX socket\n");
                     // TODO:
@@ -251,45 +311,31 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Received a message of length: %lu\n",
                             nb_read);
 
-                    // Convert to recover the BIER packet
-                    bier_payload_t *bier_payload =
-                        (bier_payload_t *)malloc(sizeof(bier_payload_t));
-                    if (!bier_payload) {
-                        perror("malloc bier payload");
+                    bier_message_type type;
+                    void *decoded_message =
+                        decode_application_message(unix_buffer, nb_read, &type);
+                    if (!decoded_message) {
+                        fprintf(stderr, "Confirmed\n");
                         break;
                     }
-                    UsefulBufC cbor = {unix_buffer, nb_read};
-                    QCBORError uErr = decode_bier_payload(cbor, bier_payload);
-                    // TODO: check error
 
-                    fprintf(stderr, "BIER payload of %lu bytes\n",
-                            bier_payload->payload_length);
-                    fprintf(stderr, "BIER bitstring: ");
-                    for (int i = 0; i < bier_payload->bitstring_length; ++i) {
-                        fprintf(stderr, "%x ", bier_payload->bitstring[i]);
+                    switch (type) {
+                        case PACKET: {
+                            if (process_unix_message_is_payload(decoded_message, bier, all_apps) < 0) {
+                                break;
+                            }
+                        }
+                        case BIND: {
+                            if (process_unix_message_is_bind(decoded_message, all_apps) < 0) {
+                                break;
+                            }
+                        }
+                        default: {
+                            fprintf(stderr, "confirmed");
+                            break;
+                        }
                     }
-                    fprintf(stderr, "\n");
-                    // TODO: proto must be sent also, and BIFT-ID based on TE?
-                    bier_header_t *bh = init_bier_header(
-                        (const uint64_t *)bier_payload->bitstring,
-                        bier_payload->bitstring_length * 8, 6,
-                        bier_payload->use_bier_te);
-                    // TODO: check error
-                    my_packet_t *packet =
-                        encap_bier_packet(bh, bier_payload->payload_length,
-                                          bier_payload->payload);
-                    memset(&to_app.src, 0, sizeof(to_app.src));
-                    int err = bier_processing(
-                        packet->packet, packet->packet_length, bier, &to_app);
-                    if (err < 0) {
-                        fprintf(stderr,
-                                "Error when processing the BIER packet at the "
-                                "router... exiting...\n");
-                        my_packet_free(packet);
-                        break;
-                    }
-                    free_bier_payload(bier_payload);
-                    release_bier_header(bh);
+                    // free(decoded_message);
                 }
             } else if (pfds[i].revents != 0) {
                 printf("  fd=%d; events: %s%s%s\n", pfds[i].fd,

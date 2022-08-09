@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include "public/common.h"
 #include "qcbor/qcbor.h"
 #include "qcbor/qcbor_decode.h"
 #include "qcbor/qcbor_encode.h"
@@ -11,9 +12,9 @@
 typedef struct {
     int64_t use_bier_te;
     int64_t bitstring_length;  // In bytes
-    uint8_t *bitstring;
     int64_t payload_length;
     uint8_t *payload;
+    uint8_t *bitstring;
 } bier_payload_t;
 
 typedef struct {
@@ -35,15 +36,7 @@ typedef struct {
 UsefulBufC encode_bier_payload(UsefulBuf Buffer,
                                const bier_payload_t *bier_payload);
 
-/**
- * @brief Decodes a packet with BIER information for Multicast forwarding. Only
- * used by the BIER daemon
- *
- * @param buffer
- * @param bier_payload
- * @return QCBORError
- */
-QCBORError decode_bier_payload(UsefulBufC buffer, bier_payload_t *bier_payload);
+// bier_payload_t *decode_bier_payload(QCBORDecodeContext *ctx);
 
 /**
  * @brief Sends a QCBOR encoding of the received BIER packet that must be
@@ -58,3 +51,16 @@ QCBORError decode_bier_payload(UsefulBufC buffer, bier_payload_t *bier_payload);
 int encode_local_bier_payload(
     int socket, const bier_received_packet_t *bier_received_packet,
     const struct sockaddr_un *dest_addr, socklen_t addrlen);
+
+/**
+ * @brief
+ *
+ * @param app_buf
+ * @param len
+ * @param msg
+ * @return void* Pointer to (allocated) buffer with the decoded data. The caller
+ * is responsible to cast in the correct type using the `msg` variable. Returns
+ * NULL in case of error during the decoding
+ */
+void *decode_application_message(void *app_buf, ssize_t len,
+                                 bier_message_type *msg);

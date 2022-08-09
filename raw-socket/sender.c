@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
             close(socket_fd);
             exit(EXIT_FAILURE);
         }
-        fprintf(stderr, "Sent %lu bytes\n", nb_sent);
+        fprintf(stderr, "Sent %ld bytes\n", nb_sent);
         sleep(1);
     }
 
