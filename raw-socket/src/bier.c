@@ -1,6 +1,7 @@
 #include "../include/bier.h"
 
 #include "../include/qcbor-encoding.h"
+#include "../include/public/common.h"
 
 void clean_line_break(char *line) {
     int i = 0;
@@ -603,14 +604,38 @@ void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask,
     }
 }
 
-int find_correct_unix_destination(bier_all_apps_t *all_apps, struct in6_addr *dst_addr, uint16_t bier_proto) {
+/**
+ * @brief Currently only supports IPV6!
+ * 
+ * @param all_apps 
+ * @param dst_addr 
+ * @param bier_proto 
+ * @return int 
+ */
+int find_correct_unix_destination(bier_all_apps_t *all_apps, uint8_t *payload, uint16_t bier_proto) {
+    // TODO: currently only supports RAW and IPv6
+    if (bier_proto != BIERPROTO_IPV6 && bier_proto != BIERPROTO_RESERVED_RAW) {
+        return -1;
+    }
+    struct in6_addr packet_ipv6_dst = {};
+    memcpy(&packet_ipv6_dst.s6_addr, &payload[24], sizeof(packet_ipv6_dst.s6_addr));
+
     for (int i = 0; i < all_apps->nb_apps; ++i) {
-        /*if (memcmp(&all_apps->apps[i].mc_sockaddr.sa_data, &dst_addr->s6_addr, sizeof(dst_addr->s6_addr)) == 0) {
-            return i;
-        }*/
-        if (all_apps->apps[i].proto == bier_proto) {
-            return i; // TODO: check the address also
+        if (all_apps->apps[i].proto != bier_proto) {
+            continue;
+        } else if (bier_proto == BIERPROTO_RESERVED_RAW) {
+            return i; // Raw proto means that we do not care about the sockaddr
         }
+        
+        // Hence must be IPv6 here
+        if (all_apps->apps[i].mc_sockaddr.sa_family != AF_INET6) {
+            return -1;
+        }
+        struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&all_apps->apps[i].mc_sockaddr;
+        if (memcpy(&addr->sin6_addr.s6_addr, &packet_ipv6_dst.s6_addr, sizeof(packet_ipv6_dst.s6_addr)) == 0) {
+            return i;
+        }
+        
     }
     return -1; // Not found
 }
@@ -630,12 +655,8 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
     bier_received_packet.payload = packet;
     bier_received_packet.payload_length = packet_length;
     bier_received_packet.upstream_router_bfr_id = all_apps->src_bfr_id;
-
-    // Find the IPv6 packet destination address
-    struct in6_addr packet_ipv6_dst = {};
-    memcpy(&packet_ipv6_dst.s6_addr, &payload[bier_header_length + 24], sizeof(packet_ipv6_dst.s6_addr));
     
-    int app_idx = find_correct_unix_destination(all_apps, &packet_ipv6_dst, get_bier_proto(payload));
+    int app_idx = find_correct_unix_destination(all_apps, &payload[bier_header_length], get_bier_proto(payload));
     if (app_idx < 0) {
         fprintf(stderr, "Cannot find the application destination of the packet\n");
         return -1;

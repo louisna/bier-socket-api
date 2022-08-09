@@ -164,8 +164,12 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
     app->addrlen = sizeof(struct sockaddr_un);
 
     // Also add the IPv6 multicast address
-    // TODO: copy the address: may be IPv4 or IPv6
-    // memcpy(&app->mc_sockaddr, &bind->mc_sockaddr, bind->mc_sockaddr.sa_len);
+    // TODO: currently only support for IPv6
+    if (bind->mc_sockaddr.sa_family != AF_INET6) {
+        fprintf(stderr, "Does not support other family than IPv6\n");
+        return -1;
+    } 
+    memcpy(&app->mc_sockaddr, &bind->mc_sockaddr, sizeof(struct sockaddr_in6));
 
     free(bind);
     ++all_apps->nb_apps;
