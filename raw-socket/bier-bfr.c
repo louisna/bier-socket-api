@@ -56,8 +56,8 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     int nb_entries = 0;
     while ((readed = getline(&line, &len, file)) != -1) {
         ++nb_entries;
-        free(line);
-        line = NULL;
+        //free(line);
+        //line = NULL;
     }
 
     if (fseek(file, 0, SEEK_SET) == -1) {
@@ -103,8 +103,8 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
 
         mapping->bfr_ids[i] = id;
 
-        free(line);
-        line = NULL;
+        //free(line);
+        //line = NULL;
     }
 
     return mapping;
