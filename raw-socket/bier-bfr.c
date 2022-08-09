@@ -328,17 +328,19 @@ int main(int argc, char *argv[]) {
                     switch (type) {
                         case PACKET: {
                             if (process_unix_message_is_payload(decoded_message, bier, all_apps) < 0) {
-                                break;
+                                goto error;
                             }
+                            break;
                         }
                         case BIND: {
                             if (process_unix_message_is_bind(decoded_message, all_apps) < 0) {
-                                break;
+                                goto error;
                             }
+                            break;
                         }
                         default: {
                             fprintf(stderr, "confirmed");
-                            break;
+                            goto error;
                         }
                     }
                 }
@@ -351,6 +353,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+error:
     free(buffer);
     free(unix_buffer);
     fprintf(stderr, "Closing the program on router\n");
