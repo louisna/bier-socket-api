@@ -232,6 +232,9 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
     }
     bier_bft->bitstring_length = bitstring_length;
 
+    free(line);
+    line = NULL;
+
     // The BFR ID of the local router
     if ((readed = getline(&line, &len, file)) == -1) {
         fprintf(stderr, "Cannot get the local BFR ID\n");
@@ -248,6 +251,9 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
     }
     bier_bft->local_bfr_id = local_bfr_id;
 
+    free(line);
+    line = NULL;
+
     // Fill in the BFT
     for (int i = 0; i < nb_bft_entry; ++i) {
         if ((readed = getline(&line, &len, file)) == -1) {
@@ -263,6 +269,9 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
         }
         bier_bft->bft[bft_entry->bfr_id - 1] =
             bft_entry;  // bfr_id is one_indexed
+        
+        free(line);
+        line = NULL;
     }
     return 0;
 }
@@ -300,6 +309,9 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
     memset(bier_internal->global_bitstring, 0,
            sizeof(uint64_t) * (bitstring_length / 64));
 
+    free(line);
+    line = NULL;
+
     if ((readed = getline(&line, &len, file)) == -1) {
         fprintf(stderr, "Cannot get node bp id\n");
         return -1;
@@ -311,6 +323,9 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
     }
 
     bier_internal->local_bfr_id = node_bp_id;
+
+    free(line);
+    line = NULL;
 
     // Global bitstring
     if ((readed = getline(&line, &len, file)) == -1) {
@@ -335,6 +350,9 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
         }
         ++bitstring_iter;
     }
+
+    free(line);
+    line = NULL;
 
     if ((readed = getline(&line, &len, file)) == -1) {
         fprintf(stderr, "Cannot get nb entries in the map\n");
@@ -365,6 +383,9 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
         return -1;
     }
     memset(bier_internal->adj_to_bp, 0, sizeof(int) * nb_entries);
+
+    free(line);
+    line = NULL;
 
     char delim[] = " ";
     for (int i = 0; i < nb_entries; ++i) {
@@ -451,6 +472,9 @@ bier_bift_t *read_config_file(char *config_filepath) {
         return NULL;
     }
 
+    free(line);
+    line = NULL;
+
     if ((readed = getline(&line, &len, file)) == -1) {
         fprintf(stderr, "Cannot get number of BIFTs line\n");
         free(bier_bift);
@@ -471,6 +495,9 @@ bier_bift_t *read_config_file(char *config_filepath) {
         free(bier_bift);
         return NULL;
     }
+
+    free(line);
+    line = NULL;
 
     for (int bift_id = 0; bift_id < nb_bifts; ++bift_id) {
         if ((readed = getline(&line, &len, file)) == -1) {
@@ -526,6 +553,9 @@ bier_bift_t *read_config_file(char *config_filepath) {
             fprintf(stderr, "Unknown BIFT type: %d\n", bift_type);
             return NULL;
         }
+
+        free(line);
+        line = NULL;
     }
 
     // Open raw socket to forward the packets
@@ -799,10 +829,13 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length,
 
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier,
                     bier_application_t *to_app) {
-    int bift_id =
-        get_bift_id(buffer) - 1;  // In the packet: 1-indexed, here 0-indexed
-    fprintf(stderr, "The given BIFT-ID is %d\n", bift_id);
-    fprintf(stderr, "NB BIFT=%d\n", bier->nb_bift);
+    if (buffer_length < 20) {
+        return -1;
+    }
+    // In the packet: 1-indexed, here 0-indexed
+    int bift_id = get_bift_id(buffer) - 1;
+    //fprintf(stderr, "The given BIFT-ID is %d\n", bift_id);
+    //fprintf(stderr, "NB BIFT=%d\n", bier->nb_bift);
     if (bift_id >= bier->nb_bift) {
         fprintf(stderr, "BIFT-ID not supported, error state\n");
         return -1;
