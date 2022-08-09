@@ -90,9 +90,10 @@ typedef struct {
 } bier_bft_entry_t;
 
 typedef struct {
+    uint16_t proto; // Protocol following the BIER header
     socklen_t addrlen;
     struct sockaddr_un app_addr;
-    struct in6_addr mc_addr; // Application expects to receive packets from it
+    struct sockaddr mc_sockaddr; // Application expects to receive packets from it
 } bier_application_t;
 
 #define BIER_MAX_APPS 10

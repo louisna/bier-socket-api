@@ -603,13 +603,20 @@ void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask,
     }
 }
 
-int find_correct_unix_destination(bier_all_apps_t *all_apps, struct in6_addr *dst_addr) {
+int find_correct_unix_destination(bier_all_apps_t *all_apps, struct in6_addr *dst_addr, uint16_t bier_proto) {
     for (int i = 0; i < all_apps->nb_apps; ++i) {
-        if (memcmp(&all_apps->apps[i].mc_addr.s6_addr, &dst_addr->s6_addr, sizeof(dst_addr->s6_addr)) == 0) {
+        /*if (memcmp(&all_apps->apps[i].mc_sockaddr.sa_data, &dst_addr->s6_addr, sizeof(dst_addr->s6_addr)) == 0) {
             return i;
+        }*/
+        if (all_apps->apps[i].proto == bier_proto) {
+            return i; // TODO: check the address also
         }
     }
     return -1; // Not found
+}
+
+static inline uint16_t get_bier_proto(uint8_t *bier_header) {
+    return bier_header[9] & 0x3f;
 }
 
 int send_packet_to_application(uint8_t *payload, size_t payload_length,
@@ -628,7 +635,7 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
     struct in6_addr packet_ipv6_dst = {};
     memcpy(&packet_ipv6_dst.s6_addr, &payload[bier_header_length + 24], sizeof(packet_ipv6_dst.s6_addr));
     
-    int app_idx = find_correct_unix_destination(all_apps, &packet_ipv6_dst);
+    int app_idx = find_correct_unix_destination(all_apps, &packet_ipv6_dst, get_bier_proto(payload));
     if (app_idx < 0) {
         fprintf(stderr, "Cannot find the application destination of the packet\n");
         return -1;

@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "\n");
         size_t nb_sent =
             sendto_bier(socket_fd, packet->packet, packet->packet_length,
-                        (struct sockaddr *)&dst, sizeof(dst), &bier_info);
+                        (struct sockaddr *)&dst, sizeof(dst), 6, &bier_info);
         if (nb_sent < 0) {
             perror("Sender sendto_bier");
             close(socket_fd);

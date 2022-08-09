@@ -33,19 +33,23 @@ bier_payload_t *decode_bier_payload(QCBORDecodeContext ctx) {
     QCBORError uErr;
     QCBORItem item;
 
-    bier_payload_t *bier_payload = (bier_payload_t *)malloc(sizeof(bier_payload_t));
+    bier_payload_t *bier_payload =
+        (bier_payload_t *)malloc(sizeof(bier_payload_t));
     if (!bier_payload) {
         perror("malloc decode payload");
         return NULL;
     }
 
     QCBORDecode_GetInt64InMapSZ(&ctx, "bift_id", &(bier_payload->use_bier_te));
+    QCBORDecode_GetInt64InMapSZ(&ctx, "proto", (uint64_t *)&bier_payload->proto);
 
-    QCBORDecode_GetItemInMapSZ(&ctx, "bitstring", QCBOR_TYPE_BYTE_STRING, &item);
+    QCBORDecode_GetItemInMapSZ(&ctx, "bitstring", QCBOR_TYPE_BYTE_STRING,
+                               &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC bitstring_buf = item.val.string;
         bier_payload->bitstring_length = bitstring_buf.len;
-        bier_payload->bitstring = (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->bitstring_length);
+        bier_payload->bitstring =
+            (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->bitstring_length);
         if (!bier_payload->bitstring) {
             perror("malloc");
         } else {
@@ -58,7 +62,8 @@ bier_payload_t *decode_bier_payload(QCBORDecodeContext ctx) {
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC payload_buf = item.val.string;
         bier_payload->payload_length = payload_buf.len;
-        bier_payload->payload = (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->payload_length);
+        bier_payload->payload =
+            (uint8_t *)malloc(sizeof(uint8_t) * bier_payload->payload_length);
         if (0 && !bier_payload->payload) {
             perror("malloc");
         } else {
@@ -126,16 +131,18 @@ bier_bind_t *decode_bier_bind(QCBORDecodeContext *ctx) {
     }
     memset(bind, 0, sizeof(bier_bind_t));
 
+    QCBORDecode_GetInt64InMapSZ(ctx, "proto", (uint64_t *)&bind->proto);
+
     QCBORDecode_GetItemInMapSZ(ctx, "unix_path", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
         UsefulBufC unix_path_buf = item.val.string;
         memcpy(bind->unix_path, unix_path_buf.ptr, unix_path_buf.len);
     }
 
-    QCBORDecode_GetItemInMapSZ(ctx, "mc_addr", QCBOR_TYPE_BYTE_STRING, &item);
+    QCBORDecode_GetItemInMapSZ(ctx, "mc_sockaddr", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {
-        UsefulBufC mc_addr_buf = item.val.string;
-        memcpy(&bind->mc_addr, mc_addr_buf.ptr, mc_addr_buf.len);
+        UsefulBufC mc_sockaddr_buf = item.val.string;
+        memcpy(&bind->mc_sockaddr, mc_sockaddr_buf.ptr, mc_sockaddr_buf.len);
     }
 
     uErr = QCBORDecode_GetError(ctx);
@@ -169,7 +176,8 @@ void *decode_application_message(void *app_buf, ssize_t len,
             if (!payload) {
                 return NULL;
             }
-            fprintf(stderr, "Payload BIER information: %lu %lu\n", payload->bitstring_length, payload->payload_length);
+            fprintf(stderr, "Payload BIER information: %lu %lu\n",
+                    payload->bitstring_length, payload->payload_length);
 
             QCBORDecode_ExitMap(&ctx);
             if (QCBORDecode_Finish(&ctx) != QCBOR_SUCCESS) {

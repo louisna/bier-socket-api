@@ -129,7 +129,7 @@ int process_unix_message_is_payload(void *bier_payload_void,
     // TODO: proto must be sent also, and BIFT-ID based on TE?
     bier_header_t *bh = init_bier_header(
         (const uint64_t *)bier_payload->bitstring,
-        bier_payload->bitstring_length * 8, 6, bier_payload->use_bier_te);
+        bier_payload->bitstring_length * 8, bier_payload->proto, bier_payload->use_bier_te);
     // TODO: check error
     my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length,
                                             bier_payload->payload);
@@ -156,19 +156,19 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
     }
     
     bier_bind_t *bind = (bier_bind_t *)message;
-    ++all_apps->nb_apps;
-
-    // Fill the address to the application to bind to address
     bier_application_t *app = &all_apps->apps[all_apps->nb_apps];
     memset(app, 0, sizeof(bier_application_t));
+    app->proto = bind->proto;
     app->app_addr.sun_family = AF_UNIX;
     strcpy(app->app_addr.sun_path, bind->unix_path);
     app->addrlen = sizeof(struct sockaddr_un);
 
     // Also add the IPv6 multicast address
-    memcpy(&app->mc_addr.s6_addr, bind->mc_addr.s6_addr, sizeof(app->mc_addr.s6_addr));
-    free(bind);
+    // TODO: copy the address: may be IPv4 or IPv6
+    // memcpy(&app->mc_sockaddr, &bind->mc_sockaddr, bind->mc_sockaddr.sa_len);
 
+    free(bind);
+    ++all_apps->nb_apps;
     return 0;
 }
 

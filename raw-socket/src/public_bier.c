@@ -8,7 +8,7 @@
 
 ssize_t sendto_bier(int socket, const void *buf, size_t len,
                     const struct sockaddr *dest_addr, socklen_t addrlen,
-                    bier_info_t *bier_info) {
+                    uint16_t proto, bier_info_t *bier_info) {
     size_t qcbor_length = len + bier_info->send_info.bitstring_length +
                           200;  // Make room for other information encoding
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
@@ -24,6 +24,7 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
     QCBOREncode_AddBytesToMap(&ctx, "bitstring", bitstring_buf);
     UsefulBufC payload_buf = {buf, len};
     QCBOREncode_AddBytesToMap(&ctx, "payload", payload_buf);
+    QCBOREncode_AddInt64ToMap(&ctx, "proto", proto);
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;
@@ -106,10 +107,11 @@ int bind_bier(int socket, const struct sockaddr *bier_sock_path, bier_bind_t *bi
     // Indicator
     QCBOREncode_AddInt64ToMap(&ctx, "type", BIND);
 
+    QCBOREncode_AddInt64ToMap(&ctx, "proto", (uint64_t)bind_to->proto);
     UsefulBufC unix_path_buf = {bind_to->unix_path, NAME_MAX};
     QCBOREncode_AddBytesToMap(&ctx, "unix_path", unix_path_buf);
-    UsefulBufC mc_addr_buf = {&bind_to->mc_addr, sizeof(struct in6_addr)};
-    QCBOREncode_AddBytesToMap(&ctx, "mc_addr", mc_addr_buf);
+    UsefulBufC mc_sockaddr_buf = {&bind_to->mc_sockaddr, sizeof(struct sockaddr_in)};
+    QCBOREncode_AddBytesToMap(&ctx, "mc_sockaddr", mc_sockaddr_buf);
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;

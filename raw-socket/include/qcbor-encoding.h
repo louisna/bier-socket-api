@@ -13,6 +13,7 @@ typedef struct {
     int64_t use_bier_te;
     int64_t bitstring_length;  // In bytes
     int64_t payload_length;
+    uint16_t proto;
     uint8_t *payload;
     uint8_t *bitstring;
 } bier_payload_t;
