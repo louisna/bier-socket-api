@@ -24,6 +24,7 @@ bier_header_t *init_bier_header(const uint64_t *bitstring,
         free(bh);
         return NULL;
     }
+    memset(bh->_header, 0, sizeof(uint8_t) * bh->header_length);
 
     set_bier_proto(bh->_header, bier_proto);
 
@@ -68,6 +69,7 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
         perror("malloc my_packet");
         return NULL;
     }
+    memset(my_packet, 0, sizeof(my_packet_t));
 
     my_packet->packet_length = packet_total_length;
     my_packet->packet =
