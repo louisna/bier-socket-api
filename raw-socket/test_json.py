@@ -15,7 +15,7 @@ def get_nb_packets(filepath):
 
 def get_nb_app_packets(filepath):
     with open(filepath) as fd:
-        return (len(fd.readlines()) - 1) / 2
+        return (len(fd.readlines()) - 2) / 2
 
 
 def cmp_received_packets(filepath, theoric):
