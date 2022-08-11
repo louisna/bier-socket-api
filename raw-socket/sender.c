@@ -9,10 +9,10 @@
 #include "include/public/bier.h"
 #include "include/public/multicast.h"
 
-my_packet_t *dummy_packet() {
+my_packet_t *dummy_packet(char *mc_dst_addr) {
     // Destination of the multicast packet embedded in the BIER packet
     // This must be a multicast address
-    char *destination_address = "ff0:babe:cafe::1";
+    char *destination_address = mc_dst_addr;
     struct sockaddr_in6 mc_dst = {};
 
     int err =
@@ -43,10 +43,10 @@ my_packet_t *dummy_packet() {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 5) {
+    if (argc < 6) {
         fprintf(stderr,
                 "Usage: %s <UNIX socket path> <nb packets to send> <bitstring> "
-                "<bift-id>\n",
+                "<bift-id> <mc dst addr>\n",
                 argv[0]);
         exit(EXIT_SUCCESS);
     }
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
     strcpy(dst.sun_path, argv[1]);
     int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
 
-    my_packet_t *packet = dummy_packet();
+    my_packet_t *packet = dummy_packet(argv[5]);
     if (!packet) {
         exit(EXIT_FAILURE);
     }

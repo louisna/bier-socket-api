@@ -176,7 +176,8 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
         fprintf(stderr, "Does not support other family than IPv6\n");
         return -1;
     } 
-    memcpy(&app->mc_sockaddr, &bind->mc_sockaddr, sizeof(struct sockaddr_in6));
+    app->mc_addr_family = AF_INET6;
+    memcpy(app->mc_addr.mc_ipv6.s6_addr, bind->mc_sockaddr.sin6_addr.s6_addr, sizeof(bind->mc_sockaddr.sin6_addr.s6_addr));
 
     free(bind);
     ++all_apps->nb_apps;

@@ -629,21 +629,20 @@ int find_correct_unix_destination(bier_all_apps_t *all_apps, uint8_t *payload, u
         }
         
         // Hence must be IPv6 here
-        if (all_apps->apps[i].mc_sockaddr.sa_family != AF_INET6) {
+        if (all_apps->apps[i].mc_addr_family != AF_INET6) {
             fprintf(stderr, "Err: the sockaddr family should be AF_INET6\n");
             return -1;
         }
-        struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&all_apps->apps[i].mc_sockaddr;
         fprintf(stderr, "The received packet: ");
         for (int j = 0; j < 16; ++j) {
             fprintf(stderr, "%x ", packet_ipv6_dst.s6_addr[j]);
         }
         fprintf(stderr, "Bound to: ");
         for (int j = 0; j < 16; ++j) {
-            fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+            fprintf(stderr, "%x ", all_apps->apps[i].mc_addr.mc_ipv6.s6_addr[j]);
         }
         fprintf(stderr, "\n");
-        if (memcmp(addr->sin6_addr.s6_addr, packet_ipv6_dst.s6_addr, sizeof(packet_ipv6_dst.s6_addr)) == 0) {
+        if (memcmp(all_apps->apps[i].mc_addr.mc_ipv6.s6_addr, packet_ipv6_dst.s6_addr, sizeof(packet_ipv6_dst.s6_addr)) == 0) {
             return i;
         }
         
@@ -676,7 +675,7 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
     int err = encode_local_bier_payload(all_apps->application_socket,
                                         &bier_received_packet,
                                         &app->app_addr, app->addrlen);
-    fprintf(stderr, "DEBUG: combien enoyes: %d\n", err);
+    fprintf(stderr, "DEBUG: combien enoyes a l'idx %d: %d\n", app_idx, err);
     return err;
 }
 

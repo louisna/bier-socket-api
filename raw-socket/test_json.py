@@ -108,6 +108,24 @@ def test_bier_te_generic(test: "TestPcapLength", bitstring: int = 0x1ff):
         idx += 1
 
 
+def test_bier_non_te_generic(test: "TestPcapLength", bitstring: int = 0xf, nb_groups: int = 1):
+    idx = 0
+    nb_theoric = 0
+    while bitstring >> idx > 0:
+        for app_nb in range(nb_groups):
+            if bitstring & (1 << idx) == 0:  # Should not receive it
+                test.assertEqual(get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}-{app_nb}.txt")), 0)
+            else:  # Should receive it
+                if nb_theoric == 0:
+                    nb_theoric = get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}-{app_nb}.txt"))
+                test.assertEqual(get_nb_app_packets(os.path.join(LOGS_DIRECTORY, f"app-{idx}-{app_nb}.txt")), nb_theoric)
+        idx += 1
+    # TODO: test that each router with the bit set only gets a single copy of the packets
+    # TODO: nb_theoric dependent of the group
+
+
+
+
 class TestPcapLength(unittest.TestCase):
     def test(self):
         os.system(f"sudo -E python3 {MININET_SCRIPT_PATH}")
@@ -137,6 +155,11 @@ class TestPcapLength(unittest.TestCase):
         os.system("sudo ./parse_pcaps.sh")
         test_bier_te_generic(self, 0x1a4)
         # TODO: should parse the logs to see if the packet is correctly processed
+    
+    def test_bier_non_te_multiple_mc(self):
+        os.system(f"sudo -E python3 {MININET_SCRIPT_PATH} --bitstring 1f --bift-id 1 --nb-groups 2")
+        os.system("sudo ./parse_pcaps.sh")
+        test_bier_non_te_generic(self, 0x1f, nb_groups=2)
 
 
 if __name__ == "__main__":
