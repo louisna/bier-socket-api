@@ -17,7 +17,8 @@ my_packet_t *dummy_packet(char *mc_dst_addr) {
 
     int err =
         inet_pton(AF_INET6, destination_address, &mc_dst.sin6_addr.s6_addr);
-    if (err == 0) {
+    if (err != 1) {
+        fprintf(stderr, "%s\n", mc_dst_addr);
         perror("IPv6 destination");
         exit(EXIT_FAILURE);
     }
@@ -28,8 +29,8 @@ my_packet_t *dummy_packet(char *mc_dst_addr) {
     struct sockaddr_in6 mc_src = {};
 
     err = inet_pton(AF_INET6, source_address, &mc_src.sin6_addr.s6_addr);
-    if (err == 0) {
-        perror("IPv6 destination");
+    if (err != 1) {
+        perror("IPv6 source");
         exit(EXIT_FAILURE);
     }
 
@@ -43,10 +44,10 @@ my_packet_t *dummy_packet(char *mc_dst_addr) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 6) {
+    if (argc < 8) {
         fprintf(stderr,
                 "Usage: %s <UNIX socket path> <nb packets to send> <bitstring> "
-                "<bift-id> <mc dst addr>\n",
+                "<bift-id> <mc dst addr> <loopback address> <sender UNIX socket>\n",
                 argv[0]);
         exit(EXIT_SUCCESS);
     }
@@ -55,6 +56,50 @@ int main(int argc, char *argv[]) {
         perror("socket");
         exit(EXIT_FAILURE);
     }
+
+    // Destination is UNIX socket running the BIER process
+    struct sockaddr_un dst = {};
+    dst.sun_family = AF_UNIX;
+    strcpy(dst.sun_path, argv[1]);
+    int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
+
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    strcpy(addr.sun_path, argv[7]);
+
+    // https://medium.com/swlh/getting-started-with-unix-domain-sockets-4472c0db4eb1
+    if (remove(argv[7]) == -1 && errno != ENOENT) {
+        perror("Remove unix socket path");
+        close(socket_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (bind(socket_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
+        perror("Bind unix socket");
+        close(socket_fd);
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "Bound to UNIX socket\n");
+
+    // Tell BIER that we are interested to listen to some packets
+    bier_bind_t bier_bind = {};
+    strcpy(bier_bind.unix_path, argv[7]);
+    bier_bind.proto = BIERPROTO_IPV6;
+    struct sockaddr_in6 mc_group = {
+        .sin6_family = AF_INET6,
+    };
+    if (inet_pton(AF_INET6, argv[6], &mc_group.sin6_addr.s6_addr) == 0) {
+        perror("IPv6 MC destination");
+        exit(EXIT_FAILURE);
+    }
+    memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
+
+    if (bind_bier(socket_fd, &dst, &bier_bind) < 0) {
+        fprintf(stderr, "Confirmed\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "Bound to loopback address via BIER to receive the packets: %s\n", argv[7]);
+
 
     int nb_packets_to_send = atoi(argv[2]);
     if (nb_packets_to_send == 0) {
@@ -80,12 +125,6 @@ int main(int argc, char *argv[]) {
         close(socket_fd);
         exit(EXIT_FAILURE);
     }
-
-    struct sockaddr_un dst =
-        {};  // Destination is UNIX socket running the BIER process
-    dst.sun_family = AF_UNIX;
-    strcpy(dst.sun_path, argv[1]);
-    int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
 
     my_packet_t *packet = dummy_packet(argv[5]);
     if (!packet) {

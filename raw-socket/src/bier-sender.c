@@ -92,8 +92,8 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
 }
 
 my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh,
-                                           struct sockaddr_in6 *mc_src,
-                                           struct sockaddr_in6 *mc_dst,
+                                           struct in6_addr *mc_src,
+                                           struct in6_addr *mc_dst,
                                            const uint32_t payload_length,
                                            const uint8_t *payload) {
     fprintf(stderr, "dummy_packet %p %u\t", payload, payload_length);
@@ -119,8 +119,8 @@ my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh,
     ipv6_header->ip6_hops = 44;
     ipv6_header->ip6_plen = htons(8 + payload_length);  // Changed later
 
-    memcpy(&(ipv6_header->ip6_src), &mc_src->sin6_addr, 16);
-    memcpy(&(ipv6_header->ip6_dst), &mc_dst->sin6_addr, 16);
+    memcpy(&(ipv6_header->ip6_src), &mc_src->s6_addr, 16);
+    memcpy(&(ipv6_header->ip6_dst), &mc_dst->s6_addr, 16);
 
     // UDP Header
     struct udphdr *udp_header = (struct udphdr *)&packet[ipv6_header_length];

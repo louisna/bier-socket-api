@@ -132,6 +132,9 @@ bier_bind_t *decode_bier_bind(QCBORDecodeContext *ctx) {
     memset(bind, 0, sizeof(bier_bind_t));
 
     QCBORDecode_GetInt64InMapSZ(ctx, "proto", (uint64_t *)&bind->proto);
+    uint64_t is_listener;
+    QCBORDecode_GetInt64InMapSZ(ctx, "is_listener", &is_listener);
+    bind->is_listener = is_listener == 1;
 
     QCBORDecode_GetItemInMapSZ(ctx, "unix_path", QCBOR_TYPE_BYTE_STRING, &item);
     if (item.uDataType == QCBOR_TYPE_BYTE_STRING) {

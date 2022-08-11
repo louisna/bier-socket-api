@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stderr, "Bound to UNIX socket\n");
 
-    struct sockaddr_un dst =
-        {};  // Destination is UNIX socket running the BIER process
+    // Destination is UNIX socket running the BIER process
+    struct sockaddr_un dst = {};  
     dst.sun_family = AF_UNIX;
     strcpy(dst.sun_path, argv[3]);
     int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);

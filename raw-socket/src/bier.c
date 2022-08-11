@@ -696,7 +696,11 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
             fprintf(stderr,
                     "There seems to be an error. The packet bitstring contains "
                     "a bit set to true that is not mapped to a known BFR in "
-                    "the BFT.\n");
+                    "the BFT. The given bitstring is ");
+            for (int i = 0; i < bitstring_max_idx; ++i) {
+                fprintf(stderr, "%lx ", bitstring_ptr[i]);
+            }
+            fprintf(stderr, "\n");
             return -1;
         }
         uint64_t bitstring = be64toh(bitstring_ptr[bitstring_idx]);
@@ -708,7 +712,11 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                 fprintf(stderr,
                         "There seems to be an error. The packet bitstring "
                         "contains a bit set to true that is not mapped to a "
-                        "known BFR in the BFT.\n");
+                        "known BFR in the BFT. The given bitstring is ");
+                for (int i = 0; i < bitstring_max_idx; ++i) {
+                    fprintf(stderr, "%lx ", bitstring_ptr[i]);
+                }
+                fprintf(stderr, "\n");
                 return -1;
             }
             if ((bitstring >> idx_bfr_word) &

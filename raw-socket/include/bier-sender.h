@@ -39,6 +39,22 @@ typedef struct {
     uint64_t *bfr_ids;
 } bier_addr2bifr_t;
 
+typedef struct {
+    int nb_entries;
+    struct mc_entry {
+        int bifr_id;
+        int family; // AF_INET or AF_INET6
+        union {
+            struct in6_addr mc_addr6;
+            struct in_addr mc_addr4;
+        } mc_addr;
+        union {
+            struct in6_addr src_addr6;
+            struct in_addr src_addr4;
+        } src_addr;
+    } *entries;
+} mc_mapping_t;
+
 /**
  * @brief Creates a BIER header with every field set to 0 except the bitstring,
  * the BSL and the proto fields
@@ -117,8 +133,8 @@ my_packet_t *encap_bier_packet(bier_header_t *bh, const uint32_t payload_length,
  * @return my_packet_t* pointer to the custom packet
  */
 my_packet_t *create_bier_ipv6_from_payload(bier_header_t *bh,
-                                           struct sockaddr_in6 *mc_src,
-                                           struct sockaddr_in6 *mc_dst,
+                                           struct in6_addr *mc_src,
+                                           struct in6_addr *mc_dst,
                                            const uint32_t payload_length,
                                            const uint8_t *payload);
 

@@ -64,4 +64,8 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
 int bind_bier(int socket, const struct sockaddr_un *bier_sock_path,
               bier_bind_t *bind_to);
 
+
+int bind_bier_sender(int socket, const struct sockaddr_un *bier_sock_path,
+                     bier_bind_t *bind_to);
+
 #endif

@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <stdio.h>
+
 #include "../include/public/bier.h"
 #include "qcbor/qcbor.h"
 #include "qcbor/qcbor_decode.h"
@@ -14,7 +15,10 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
 
     QCBOREncodeContext ctx;
-    fprintf(stderr, "First few bytes of bitstring: %x %x %x\n", bier_info->send_info.bitstring[0], bier_info->send_info.bitstring[1], bier_info->send_info.bitstring[2]);
+    fprintf(stderr, "First few bytes of bitstring: %x %x %x\n",
+            bier_info->send_info.bitstring[0],
+            bier_info->send_info.bitstring[1],
+            bier_info->send_info.bitstring[2]);
     QCBOREncode_Init(&ctx, Buffer);
     QCBOREncode_OpenMap(&ctx);
     QCBOREncode_AddInt64ToMap(&ctx, "type", PACKET);
@@ -41,7 +45,8 @@ ssize_t sendto_bier(int socket, const void *buf, size_t len,
 }
 
 ssize_t recvfrom_bier(int socket, void *buf, size_t len,
-                      struct sockaddr *src_addr, socklen_t *addrlen, bier_info_t *bier_info) {
+                      struct sockaddr *src_addr, socklen_t *addrlen,
+                      bier_info_t *bier_info) {
     memset(bier_info, 0, sizeof(bier_info_t));
     ssize_t nb_read_return = 0;
 
@@ -89,16 +94,20 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
     }
 
     // BIER-ID of the upstream router of the packet
-    QCBORDecode_GetInt64InMapSZ(&ctx, "upstream_bifr", &bier_info->recv_info.upstream_router_bfr_id);
-    // fprintf(stderr, "------ AU DECODAGE on a %lu\n", bier_info->recv_info.upstream_router_bfr_id);
-    
+    QCBORDecode_GetInt64InMapSZ(&ctx, "upstream_bifr",
+                                &bier_info->recv_info.upstream_router_bfr_id);
+    // fprintf(stderr, "------ AU DECODAGE on a %lu\n",
+    // bier_info->recv_info.upstream_router_bfr_id);
+
     QCBORDecode_ExitMap(&ctx);
 
     return nb_read_return;
 }
 
-int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bind_to) {
-    size_t qcbor_length = sizeof(bier_bind_t) + 200; // Make room for other information encoding
+int bind_bier_generic(int socket, const struct sockaddr_un *bier_sock_path,
+                      bier_bind_t *bind_to, int is_listener) {
+    size_t qcbor_length =
+        sizeof(bier_bind_t) + 200;  // Make room for other information encoding
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
 
     QCBOREncodeContext ctx;
@@ -111,13 +120,15 @@ int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t 
     QCBOREncode_AddInt64ToMap(&ctx, "proto", (uint64_t)bind_to->proto);
     UsefulBufC unix_path_buf = {bind_to->unix_path, NAME_MAX};
     QCBOREncode_AddBytesToMap(&ctx, "unix_path", unix_path_buf);
-    UsefulBufC mc_sockaddr_buf = {&bind_to->mc_sockaddr, sizeof(struct sockaddr_in6)};
+    UsefulBufC mc_sockaddr_buf = {&bind_to->mc_sockaddr,
+                                  sizeof(struct sockaddr_in6)};
     struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind_to->mc_sockaddr;
     fprintf(stderr, "Bound to2: ");
     for (int j = 0; j < 16; ++j) {
         fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
     }
     QCBOREncode_AddBytesToMap(&ctx, "mc_sockaddr", mc_sockaddr_buf);
+    QCBOREncode_AddInt64ToMap(&ctx, "is_listener", is_listener);
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;
@@ -128,10 +139,20 @@ int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t 
     }
 
     size_t nb_sent =
-        sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0, (struct sockaddr *)bier_sock_path, sizeof(struct sockaddr_un));
+        sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0,
+               (struct sockaddr *)bier_sock_path, sizeof(struct sockaddr_un));
     if (nb_sent < 0) {
         perror("Cannot send bind information to BIER:");
         return -1;
     }
     return 0;
+}
+
+int bind_bier_sender(int socket, const struct sockaddr_un *bier_sock_path,
+                     bier_bind_t *bind_to) {
+    return bind_bier_generic(socket, bier_sock_path, bind_to, 0);
+}
+
+int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bind_to) {
+    return bind_bier_generic(socket, bier_sock_path, bind_to, 1);
 }

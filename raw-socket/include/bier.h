@@ -98,6 +98,7 @@ typedef struct {
         struct in6_addr mc_ipv6;
     } mc_addr; // Application expects to receive packets from it
     int mc_addr_family; // AF_INET or AF_INET6
+    bool is_listener;
 } bier_application_t;
 
 #define BIER_MAX_APPS 10

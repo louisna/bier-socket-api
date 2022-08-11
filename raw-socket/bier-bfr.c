@@ -24,6 +24,93 @@ void free_bier_payload(bier_payload_t *bier_payload) {
     free(bier_payload);
 }
 
+mc_mapping_t *fill_mc_mapping(char *mapping_filename) {
+    FILE *file = fopen(mapping_filename, "r");
+    if (!file) {
+        perror("fill_mc_mapping fopen");
+        return NULL;
+    }
+
+    ssize_t readed = 0;
+    char *line = NULL;
+    size_t len = 0;
+
+    // Get the number of entries in the mapping
+    int nb_entries = 0;
+    while ((readed = getline(&line, &len, file)) != -1) {
+        ++nb_entries;
+        // free(line)
+        // line = NULL;
+    }
+
+    if (fseek(file, 0, SEEK_SET) == -1) {
+        perror("fill_mc_mapping fseek");
+        goto fill_mc_mapping_error;
+    }
+
+    mc_mapping_t *mapping = (mc_mapping_t *)malloc(sizeof(mc_mapping_t));
+    if (!mapping) {
+        perror("fill_mc_mapping malloc");
+        goto fill_mc_mapping_error;
+    }
+
+    mapping->nb_entries = nb_entries;
+    mapping->entries =
+        (struct mc_entry *)malloc(sizeof(struct mc_entry) * nb_entries);
+    if (!mapping->entries) {
+        perror("fill_mc_mapping malloc");
+        goto fill_mc_mapping_error_2;
+    }
+    memset(mapping->entries, 0, sizeof(struct mc_entry) * nb_entries);
+
+    for (int i = 0; i < nb_entries; ++i) {
+        if ((readed = getline(&line, &len, file)) == -1) {
+            perror("fill_mc_mapping getline");
+            goto fill_mc_mapping_error_3;
+        }
+
+        char mc_addr[INET6_ADDRSTRLEN];
+        char src_addr[INET6_ADDRSTRLEN];
+        int bifr_id;
+
+        if (sscanf(line, "%s %s %d", mc_addr, src_addr, &bifr_id) < 0) {
+            perror("fill_mc_mapping sscanf");
+            goto fill_mc_mapping_error_3;
+        }
+
+        // TODO: currently only support for IPv6
+        // Parse into IPv6 address
+        if (inet_pton(AF_INET6, mc_addr,
+                      mapping->entries[i].mc_addr.mc_addr6.s6_addr) != 1) {
+            perror("fill_mc_mapping inet_pton");
+            goto fill_mc_mapping_error_3;
+        }
+        mapping->entries[i].family = AF_INET6;
+
+        if (inet_pton(AF_INET, src_addr,
+                      mapping->entries[i].src_addr.src_addr6.s6_addr) != 1) {
+            perror("fill_mc_mapping inet_pton src mc");
+            goto fill_mc_mapping_error_3;
+        }
+
+        mapping->entries[i].bifr_id = bifr_id;
+
+        // free(line);
+        // line = NULL;
+    }
+
+    fclose(file);
+    return mapping;
+
+fill_mc_mapping_error_3:
+    free(mapping->entries);
+fill_mc_mapping_error_2:
+    free(mapping);
+fill_mc_mapping_error:
+    fclose(file);
+    return NULL;
+}
+
 int64_t get_id_from_address(struct in6_addr *addr, bier_addr2bifr_t *mapping) {
     for (int i = 0; i < mapping->nb_entries; ++i) {
         // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3],
@@ -112,11 +199,12 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
         line = NULL;
     }
 
+    fclose(file);
+
     return mapping;
 }
 
-int process_unix_message_is_payload(void *bier_payload_void,
-                                    bier_bift_t *bier,
+int process_unix_message_is_payload(void *bier_payload_void, bier_bift_t *bier,
                                     bier_all_apps_t *all_apps) {
     bier_payload_t *bier_payload = (bier_payload_t *)bier_payload_void;
     fprintf(stderr, "BIER payload of %lu bytes\n",
@@ -127,9 +215,10 @@ int process_unix_message_is_payload(void *bier_payload_void,
     }
     fprintf(stderr, "\n");
     // TODO: proto must be sent also, and BIFT-ID based on TE?
-    bier_header_t *bh = init_bier_header(
-        (const uint64_t *)bier_payload->bitstring,
-        bier_payload->bitstring_length * 8, bier_payload->proto, bier_payload->use_bier_te);
+    bier_header_t *bh =
+        init_bier_header((const uint64_t *)bier_payload->bitstring,
+                         bier_payload->bitstring_length * 8,
+                         bier_payload->proto, bier_payload->use_bier_te);
     // TODO: check error
     my_packet_t *packet = encap_bier_packet(bh, bier_payload->payload_length,
                                             bier_payload->payload);
@@ -140,7 +229,7 @@ int process_unix_message_is_payload(void *bier_payload_void,
         fprintf(stderr,
                 "Error when processing the BIER packet at the "
                 "router... exiting...\n");
-        my_packet_free(packet); // TODO: the frees are not logical here
+        my_packet_free(packet);  // TODO: the frees are not logical here
         return -1;
     }
     free_bier_payload(bier_payload);
@@ -149,14 +238,39 @@ int process_unix_message_is_payload(void *bier_payload_void,
     return 0;
 }
 
-int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
+int get_bifr_id_from_mc_addr(int family, uint8_t *mc_addr,
+                             mc_mapping_t *mapping) {
+    // TODO: currently only support for IPv6
+    if (family != AF_INET6) {
+        fprintf(stderr, "Currently only supports IPv6");
+        return -1;
+    }
+
+    for (int i = 0; i < mapping->nb_entries; ++i) {
+        if (memcmp(mapping->entries[i].mc_addr.mc_addr6.s6_addr, mc_addr,
+                   sizeof(mapping->entries[i].mc_addr.mc_addr6.s6_addr)) == 0) {
+            return i;
+        }
+    }
+
+    fprintf(stderr, "Did not found the BIFR ID of the address: ");
+    for (int i = 0; i < 16; ++i) {
+        fprintf(stderr, "%x ", mc_addr[i]);
+    }
+    fprintf(stderr, "\n");
+    return -1;
+}
+
+int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
+                                 bier_bift_t *bier, mc_mapping_t *mapping) {
     if (all_apps->nb_apps >= BIER_MAX_APPS) {
         fprintf(stderr, "Cannot add another application to BIER");
         return -1;
     }
-    
+
     bier_bind_t *bind = (bier_bind_t *)message;
-    fprintf(stderr, "Received a bind message for proto %d and UNIX path %s\n", bind->proto, bind->unix_path);
+    fprintf(stderr, "Received a bind message for proto %d and UNIX path %s\n",
+            bind->proto, bind->unix_path);
     struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
     fprintf(stderr, "Bound to: ");
     for (int j = 0; j < 16; ++j) {
@@ -169,27 +283,92 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps) {
     app->app_addr.sun_family = AF_UNIX;
     strcpy(app->app_addr.sun_path, bind->unix_path);
     app->addrlen = sizeof(struct sockaddr_un);
+    app->is_listener = bind->is_listener;
 
     // Also add the IPv6 multicast address
     // TODO: currently only support for IPv6
     if (bind->mc_sockaddr.sin6_family != AF_INET6) {
         fprintf(stderr, "Does not support other family than IPv6\n");
         return -1;
-    } 
+    }
+    fprintf(stderr, "P1\n");
     app->mc_addr_family = AF_INET6;
-    memcpy(app->mc_addr.mc_ipv6.s6_addr, bind->mc_sockaddr.sin6_addr.s6_addr, sizeof(bind->mc_sockaddr.sin6_addr.s6_addr));
+    memcpy(app->mc_addr.mc_ipv6.s6_addr, bind->mc_sockaddr.sin6_addr.s6_addr,
+           sizeof(bind->mc_sockaddr.sin6_addr.s6_addr));
+    fprintf(stderr, "P1,5\n");
+    // TODO: the bitstring should be safer, in case we have a very long
+    // bitstring
+    int idx_mapping = get_bifr_id_from_mc_addr(
+        AF_INET6, bind->mc_sockaddr.sin6_addr.s6_addr, mapping);
+    if (idx_mapping < 0) {
+        return -1;
+    }
+    fprintf(stderr, "P2\n");
+    int bfir_id = mapping->entries[idx_mapping].bifr_id;
+    uint64_t bitstring = 1 << (bfir_id - 1);  // 0-indexed
 
+    if (bind->is_listener) {
+        // The local BFER updated its internal database
+        // Send a packet to the BIFR of the multicast group
+        // to notify an update in the bitstring
+        // TODO: currently the packet is sent with the multicast address
+        // as destination it MUST be the address of the multicast source
+        // instead.
+        // TODO: this should follow the IETF draft, especially the number of
+        // repetitions of a packet
+        fprintf(stderr, "P3\n");
+        struct in6_addr src, dst;
+        memcpy(src.s6_addr, bier->local.sin6_addr.s6_addr, sizeof(src.s6_addr));
+        memcpy(dst.s6_addr,
+               mapping->entries[idx_mapping].src_addr.src_addr6.s6_addr,
+               sizeof(dst.s6_addr));
+
+        // TODO: currently the packet is really dumb. It just contain a byte to
+        // tell the BFIR if the current BFER joins or leaves the multicast
+        // group, And the BFR-ID of the current BFER
+        int32_t payload[2];
+        payload[0] = 1;
+        // TODO: not sure about this line
+        payload[1] = bier->b->bier->local_bfr_id;  // Local BFR-ID
+
+        bier_header_t *bh = init_bier_header(&bitstring, 64, BIERPROTO_IPV6, 1);
+        if (!bh) {
+            return -1;
+        }
+        fprintf(stderr, "P4\n");
+
+        my_packet_t *packet = create_bier_ipv6_from_payload(
+            bh, &src, &dst, sizeof(payload), (uint8_t *)payload);
+        if (!packet) {
+            release_bier_header(bh);
+            return -1;
+        }
+
+        fprintf(stderr,
+                "Will send a packet to the BFIR %d to set the bit in the "
+                "bitstring. Bitstring is: %lx\n",
+                bfir_id, bitstring);
+        int err = bier_processing(packet->packet, packet->packet_length, bier,
+                                  all_apps);
+        if (err < 0) {
+            fprintf(stderr, "Error when sending the BIER BINDING\n");
+            return -1;
+        }
+
+        my_packet_free(packet);
+        release_bier_header(bh);
+    }
     free(bind);
     ++all_apps->nb_apps;
     return 0;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 5) {
-        fprintf(
-            stderr,
-            "Usage: %s <config_file> <send UNIX socket> <listen UNIX socket> <ipv6-2-id-mapping>\n",
-            argv[0]);
+    if (argc < 6) {
+        fprintf(stderr,
+                "Usage: %s <config_file> <send UNIX socket> <listen UNIX "
+                "socket> <ipv6-2-id-mapping> <mc groups mapping>\n",
+                argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -215,13 +394,19 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    bier_all_apps_t *all_apps = (bier_all_apps_t *)malloc(sizeof(bier_all_apps_t));
+    bier_all_apps_t *all_apps =
+        (bier_all_apps_t *)malloc(sizeof(bier_all_apps_t));
     if (!all_apps) {
         perror("malloc all apps");
         exit(EXIT_FAILURE);
     }
     memset(all_apps, 0, sizeof(bier_all_apps_t));
     all_apps->application_socket = listening_socket;
+
+    mc_mapping_t *mc2id_mapping = fill_mc_mapping(argv[5]);
+    if (!mapping) {
+        exit(EXIT_FAILURE);
+    }
 
     // This socket is used to forward packets from the BIER network to the
     // application
@@ -339,13 +524,16 @@ int main(int argc, char *argv[]) {
 
                     switch (type) {
                         case PACKET: {
-                            if (process_unix_message_is_payload(decoded_message, bier, all_apps) < 0) {
+                            if (process_unix_message_is_payload(
+                                    decoded_message, bier, all_apps) < 0) {
                                 goto error;
                             }
                             break;
                         }
                         case BIND: {
-                            if (process_unix_message_is_bind(decoded_message, all_apps) < 0) {
+                            if (process_unix_message_is_bind(
+                                    decoded_message, all_apps, bier,
+                                    mc2id_mapping) < 0) {
                                 goto error;
                             }
                             break;
@@ -370,6 +558,8 @@ error:
     free(unix_buffer);
     fprintf(stderr, "Closing the program on router\n");
     free_bier_bft(bier);
+    free(mc2id_mapping->entries);
+    free(mc2id_mapping);
     close(sending_socket);
     close(listening_socket);
 }
