@@ -87,7 +87,7 @@ mc_mapping_t *fill_mc_mapping(char *mapping_filename) {
         }
         mapping->entries[i].family = AF_INET6;
 
-        if (inet_pton(AF_INET, src_addr,
+        if (inet_pton(AF_INET6, src_addr,
                       mapping->entries[i].src_addr.src_addr6.s6_addr) != 1) {
             perror("fill_mc_mapping inet_pton src mc");
             goto fill_mc_mapping_error_3;
