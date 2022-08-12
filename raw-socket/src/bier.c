@@ -675,6 +675,7 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
     int err = encode_local_bier_payload(all_apps->application_socket,
                                         &bier_received_packet,
                                         &app->app_addr, app->addrlen);
+    perror("MAIS");
     fprintf(stderr, "DEBUG: combien enoyes a l'idx %d: %d\n", app_idx, err);
     return err;
 }

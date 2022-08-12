@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
     }
     memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
 
-    if (bind_bier(socket_fd, &dst, &bier_bind) < 0) {
+    if (bind_bier_sender(socket_fd, &dst, &bier_bind) < 0) {
         fprintf(stderr, "Confirmed\n");
         exit(EXIT_FAILURE);
     }
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "%x ", packet->packet[j]);
         }
         fprintf(stderr, "\n");
-        size_t nb_sent =
+        ssize_t nb_sent =
             sendto_bier(socket_fd, packet->packet, packet->packet_length,
                         (struct sockaddr *)&dst, sizeof(dst), 6, &bier_info);
         if (nb_sent < 0) {

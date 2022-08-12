@@ -269,8 +269,8 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
     }
 
     bier_bind_t *bind = (bier_bind_t *)message;
-    fprintf(stderr, "Received a bind message for proto %d and UNIX path %s\n",
-            bind->proto, bind->unix_path);
+    fprintf(stderr, "Received a bind message for proto %d and UNIX path %s. Is listener? %u\n",
+            bind->proto, bind->unix_path, bind->is_listener);
     struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
     fprintf(stderr, "Bound to: ");
     for (int j = 0; j < 16; ++j) {
@@ -296,18 +296,18 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
     memcpy(app->mc_addr.mc_ipv6.s6_addr, bind->mc_sockaddr.sin6_addr.s6_addr,
            sizeof(bind->mc_sockaddr.sin6_addr.s6_addr));
     fprintf(stderr, "P1,5\n");
-    // TODO: the bitstring should be safer, in case we have a very long
-    // bitstring
-    int idx_mapping = get_bifr_id_from_mc_addr(
-        AF_INET6, bind->mc_sockaddr.sin6_addr.s6_addr, mapping);
-    if (idx_mapping < 0) {
-        return -1;
-    }
-    fprintf(stderr, "P2\n");
-    int bfir_id = mapping->entries[idx_mapping].bifr_id;
-    uint64_t bitstring = 1 << (bfir_id - 1);  // 0-indexed
 
     if (bind->is_listener) {
+        // TODO: the bitstring should be safer, in case we have a very long
+        // bitstring
+        int idx_mapping = get_bifr_id_from_mc_addr(
+            AF_INET6, bind->mc_sockaddr.sin6_addr.s6_addr, mapping);
+        if (idx_mapping < 0) {
+            return -1;
+        }
+        fprintf(stderr, "P2\n");
+        int bfir_id = mapping->entries[idx_mapping].bifr_id;
+        uint64_t bitstring = 1 << (bfir_id - 1);  // 0-indexed
         // The local BFER updated its internal database
         // Send a packet to the BIFR of the multicast group
         // to notify an update in the bitstring

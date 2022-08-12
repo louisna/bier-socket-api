@@ -117,6 +117,9 @@ int encode_local_bier_payload(
 
     size_t nb_sent = sendto(socket, EncodedCBOR.ptr, EncodedCBOR.len, 0,
                             (struct sockaddr *)dest_addr, addrlen);
+    if (nb_sent < 0) {
+        perror("encode_local_bier_payload sendto");
+    }
     return nb_sent;
 }
 
