@@ -2,6 +2,7 @@
 #define __BIER_COMMON_H_
 
 #include <netinet/ip6.h>
+#include <stdbool.h>
 
 #ifndef NAME_MAX
 #define NAME_MAX 255
