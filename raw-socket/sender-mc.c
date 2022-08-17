@@ -139,7 +139,7 @@ int receive_mc_join(uint8_t *packet, ssize_t packet_length, uint64_t *bitstring,
 
     if (verbose) {
         fprintf(stderr, "   Does it join: %u. The BFER-ID: %u\n", join, bfr_id);
-        fprintf(stderr, "   The bitstring is now: %lu\n", bitstring[0]);
+        fprintf(stderr, "   The bitstring is now: %lx\n", bitstring[0]);
     }
 }
 
@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
 
     // Tell BIER that we want to receive packets for our address
     bier_bind_t bier_bind = {};
-    strcpy(bier_bind.unix_path, args.loopback);
+    strcpy(bier_bind.unix_path, args.sender_path);
     bier_bind.proto = BIERPROTO_IPV6;
     bier_bind.mc_sockaddr.sin6_family = AF_INET6;
     if (inet_pton(AF_INET6, args.loopback, &bier_bind.mc_sockaddr.sin6_addr.s6_addr) == 0) {
@@ -228,7 +228,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in6 _src_received = {};
     
     // Timeout information
-    int timeout_send = 1000; // ms
+    int timeout_send = 2000; // ms
     struct timeval last_sent;
     gettimeofday(&last_sent, NULL);
 
@@ -262,6 +262,8 @@ int main(int argc, char *argv[]) {
                 if (nb_sent < 0) {
                     goto error2;
                 }
+
+                --nb_packets_left;
             }
             
             // Emulates the timeout, even if no receiver
