@@ -50,7 +50,7 @@ void print_bft(bier_internal_t *bft) {
     }
 }
 
-bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length) {
+bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length, bool use_ipv4) {
     size_t line_length = strlen(line_config);
     char delim[] = " ";
 
@@ -136,18 +136,23 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length) {
         if (ptr == NULL) {
             goto empty_string;
         }
-        struct sockaddr_in6 bfr_nei_addr;
-        memset(&bfr_nei_addr, 0, sizeof(struct sockaddr_in6));
-        bfr_nei_addr.sin6_family = AF_INET6;
-        // Must also clean the '\n' of the string
+
+        int err;
         clean_line_break(ptr);
-        if (inet_pton(AF_INET6, ptr, bfr_nei_addr.sin6_addr.s6_addr) != 1) {
-            fprintf(stderr, "Cannot convert neighbour address: %s\n", ptr);
-            perror("inet_ntop bfr_nei_addr");
+        if (use_ipv4) {
+            entry_ecmp->bfr_nei_addr.v4.sin_family = AF_INET;
+            err = inet_pton(AF_INET, ptr, &entry_ecmp->bfr_nei_addr.v4.sin_addr.s_addr);
+            fprintf(stderr, "Gonna parse this address: %s\n", ptr);
+        } else {
+            entry_ecmp->bfr_nei_addr.v6.sin6_family = AF_INET6;
+            err = inet_pton(AF_INET6, ptr, entry_ecmp->bfr_nei_addr.v6.sin6_addr.s6_addr);
+        }
+        if (err != 1) {
+            fprintf(stderr, "Cannot convert neighbour address: %s (err is %d)\n", ptr, err);
+            perror("inet_ntop bfr_nei_addr 2");
             return NULL;
         }
 
-        entry_ecmp->bfr_nei_addr = bfr_nei_addr;
         bier_entry->ecmp_entry[i_ecmp] = entry_ecmp;
     }
     bier_entry->bfr_id = bfr_id;
@@ -190,7 +195,7 @@ void free_bier_bft(bier_bift_t *bift) {
     free(bift);
 }
 
-int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
+int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4) {
     char *line = NULL;
     ssize_t readed = 0;
     size_t len = 0;
@@ -262,7 +267,7 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
             free(bier_bft);
             return -1;
         }
-        bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length);
+        bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length, use_ipv4);
         if (!bft_entry) {
             fprintf(stderr, "Cannot parse line: %s\n", line);
             return -1;
@@ -276,7 +281,7 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft) {
     return 0;
 }
 
-int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
+int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal, bool use_ipv4) {
     char *line = NULL;
     ssize_t readed = 0;
     size_t len = 0;
@@ -366,10 +371,10 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
     bier_internal->nb_adjacencies = nb_entries;
 
     // Parsing the lines
-    // It is only an array of sockaddr_in6. The index corresponds to the mapping
+    // It is only an array of sockaddr. The index corresponds to the mapping
     // of the BP of the adjacency bit
-    bier_internal->bfr_nei_addr =
-        (struct sockaddr_in6 *)malloc(sizeof(struct sockaddr_in6) * nb_entries);
+    // Use sockaddr_in6 because longer than sockaddr_in
+    bier_internal->bfr_nei_addr = (sockaddr_uniform_t *)malloc(sizeof(sockaddr_uniform_t) * nb_entries);
     if (!bier_internal->bfr_nei_addr) {
         perror("Malloc bier te bfr nei addr");
         return -1;
@@ -417,17 +422,20 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
             fprintf(stderr, "Cannot get neigh address bier te\n");
             return -1;
         }
-        struct sockaddr_in6 bfr_nei_addr = {};
-        bfr_nei_addr.sin6_family = AF_INET6;
-        // Must also clean the '\n' of the string
-        clean_line_break(ptr);
-        if (inet_pton(AF_INET6, ptr, bfr_nei_addr.sin6_addr.s6_addr) != 1) {
-            fprintf(stderr, "Cannot convert neighbour address bier te: %s\n",
-                    ptr);
+
+        int err;
+        if (use_ipv4) {
+            bier_internal->bfr_nei_addr[i].v4.sin_family = AF_INET;
+            err = inet_pton(AF_INET, ptr, &bier_internal->bfr_nei_addr[i].v4.sin_addr.s_addr);
+        } else {
+            bier_internal->bfr_nei_addr[i].v6.sin6_family = AF_INET6;
+            err = inet_pton(AF_INET6, ptr, bier_internal->bfr_nei_addr[i].v6.sin6_addr.s6_addr);
+        }
+        if (err != 1) {
+            fprintf(stderr, "Cannot convert neighbour address bier te: %s\n", ptr);
             perror("inet_ntop bfr_nei_addr");
             return -1;
         }
-        bier_internal->bfr_nei_addr[i] = bfr_nei_addr;
     }
     return 0;
 }
@@ -435,7 +443,7 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal) {
 // TODO: multiple checks:
 //   * do we read exactly once each entry?
 //   * do we have all entries?
-bier_bift_t *read_config_file(char *config_filepath) {
+bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4) {
     FILE *file = fopen(config_filepath, "r");
     if (!file) {
         fprintf(stderr, "Impossible to open the config file: %s\n",
@@ -465,12 +473,8 @@ bier_bift_t *read_config_file(char *config_filepath) {
 
     // The last byte is the '\n' => must erase it by inserting a 0
     line[readed - 1] = '\0';
-    struct in6_addr local_addr = {};
-    if (inet_pton(AF_INET6, line, local_addr.s6_addr) != 1) {
-        fprintf(stderr, "Cannot convert the local address: %s\n", line);
-        free(bier_bift);
-        return NULL;
-    }
+    char local_addr_str[INET6_ADDRSTRLEN];
+    strcpy(local_addr_str, line);
 
     free(line);
     line = NULL;
@@ -528,7 +532,7 @@ bier_bift_t *read_config_file(char *config_filepath) {
                           // the configuration?)
             bier_bift->b[bift_id].bier = bier_internal;
             bier_bift->b[bift_id].t = BIER;
-            if (fill_bier_internal_bier(file, bier_internal) != 0) {
+            if (fill_bier_internal_bier(file, bier_internal, use_ipv4) != 0) {
                 return NULL;
             }
         } else if (bift_type == BIER_TE) {
@@ -545,7 +549,7 @@ bier_bift_t *read_config_file(char *config_filepath) {
                           // the configuration?)
             bier_bift->b[bift_id].bier_te = bier_internal;
             bier_bift->b[bift_id].t = BIER_TE;
-            if (fill_bier_internal_bier_te(file, bier_internal) != 0) {
+            if (fill_bier_internal_bier_te(file, bier_internal, use_ipv4) != 0) {
                 return NULL;
             }
             printf("Test %d\n", bier_internal->adj_to_bp[0]);
@@ -559,29 +563,37 @@ bier_bift_t *read_config_file(char *config_filepath) {
     }
 
     // Open raw socket to forward the packets
-    bier_bift->socket = socket(AF_INET6, SOCK_RAW, 253);
+    int af_family = use_ipv4 ? AF_INET : AF_INET6;
+    bier_bift->socket = socket(af_family, SOCK_RAW, 253);
     if (bier_bift->socket < 0) {
         perror("socket BFT");
         free_bier_bft(bier_bift);
         return NULL;
     }
 
-    struct sockaddr_in6 local_router = {
-        .sin6_family = AF_INET6,
-    };
-    char ptr[400];
-    memcpy(bier_bift->local.sin6_addr.s6_addr, local_addr.s6_addr,
-           sizeof(local_addr.s6_addr));
-    memcpy(local_router.sin6_addr.s6_addr, local_addr.s6_addr, sizeof(local_addr.s6_addr));
-    fprintf(stderr, "Bind to local address on router:  %s\n",
-           inet_ntop(AF_INET6, bier_bift->local.sin6_addr.s6_addr, ptr,
-                     sizeof(ptr)));
-    if (bind(bier_bift->socket, (struct sockaddr *)&local_router,
-             sizeof(local_router)) < 0) {
+    int err;
+    if (use_ipv4) {
+        err = inet_pton(AF_INET, local_addr_str, &bier_bift->local.v4.sin_addr.s_addr);
+    } else {
+        err = inet_pton(AF_INET6, local_addr_str, bier_bift->local.v6.sin6_addr.s6_addr);
+    }
+    if (err != 1) {
+        fprintf(stderr, "Cannot convert the local address: %s\n", local_addr_str);
+        free(bier_bift);
+        return NULL;
+    }
+
+    if (use_ipv4) {
+        err = bind(bier_bift->socket, (struct sockaddr *)&bier_bift->local.v4, sizeof(bier_bift->local.v4));
+    } else {
+        err = bind(bier_bift->socket, (struct sockaddr *)&bier_bift->local.v6, sizeof(bier_bift->local.v6));
+    }
+    if (err < 0) {
         perror("Bind local router");
         free_bier_bft(bier_bift);
         return NULL;
     }
+    fprintf(stderr, "Bind to local address on router:  %s\n", local_addr_str);
 
     return bier_bift;
 }
@@ -605,12 +617,15 @@ void update_bitstring(uint64_t *bitstring_ptr, uint64_t *forwarding_bitmask,
 
 int send_packet_to_application(uint8_t *payload, size_t payload_length,
                                size_t bier_header_length,
-                               bier_application_t *to_app) {
+                               bier_application_t *to_app, bool use_ipv4) {
     size_t packet_length = payload_length - bier_header_length;
     uint8_t *packet = &payload[bier_header_length];
     bier_received_packet_t bier_received_packet = {};
-    memcpy(&bier_received_packet.ip6_encap_src, &to_app->src.sin6_addr,
-           sizeof(to_app->src.sin6_addr));
+    if (use_ipv4) {
+        memcpy(&bier_received_packet.ip6_encap_src.v4.s_addr, &to_app->src.v4.sin_addr.s_addr, sizeof(&to_app->src.v4.sin_addr.s_addr));
+    } else {
+        memcpy(&bier_received_packet.ip6_encap_src.v6.s6_addr, &to_app->src.v6.sin6_addr.s6_addr, sizeof(&to_app->src.v6.sin6_addr.s6_addr));
+    }
     bier_received_packet.payload = packet;
     bier_received_packet.payload_length = packet_length;
     bier_received_packet.upstream_router_bfr_id = to_app->src_bfr_id;
@@ -622,7 +637,7 @@ int send_packet_to_application(uint8_t *payload, size_t payload_length,
 
 int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                            bier_internal_t *bft, int socket,
-                           bier_application_t *to_app) {
+                           bier_application_t *to_app, bool use_ipv4) {
     // Remain as general as possible: handle all bitstring length
     uint32_t bitstring_max_idx =
         bft->bitstring_length / 64;                         // In 64 bits words
@@ -667,7 +682,7 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                     // bier_local_processing->args);
                     send_packet_to_application(buffer, buffer_length,
                                                12 + bft->bitstring_length / 8,
-                                               to_app);
+                                               to_app, use_ipv4);
                     update_bitstring(
                         bitstring_ptr,
                         bft->bft[idx_bfr]->ecmp_entry[0]->forwarding_bitmask,
@@ -715,18 +730,22 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                 // Send copy
                 bier_bft_entry_t *bft_entry = bft->bft[idx_bfr];
                 char buff[400] = {};
-                printf("Should send to %s\n",
-                       inet_ntop(AF_INET6,
-                                 bft_entry->ecmp_entry[ecmp_entry_idx]
-                                     ->bfr_nei_addr.sin6_addr.s6_addr,
-                                 buff, sizeof(buff)));
+                socklen_t socklen;
+                if (use_ipv4) {
+                    inet_ntop(AF_INET, &bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.v4.sin_addr.s_addr, buff, sizeof(buff));
+                    socklen = sizeof(struct sockaddr_in);
+                    uint32_t ad = bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.v4.sin_addr.s_addr;
+                    fprintf(stderr, "l'adresse est: %u %u %u %u", ad >> 24, (ad >> 16) & 0xff, (ad >> 8) & 0xff, ad & 0xff);
+                } else {
+                    inet_ntop(AF_INET6, bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr.v6.sin6_addr.s6_addr, buff, sizeof(buff));
+                    socklen = sizeof(struct sockaddr_in6);
+                }
+                printf("Should send to %s\n", buff);
                 printf("The bitstirng is %lx\n", bitstring_copy[0]);
                 int err = sendto(
                     socket, packet_copy, sizeof(packet_copy), 0,
                     (struct sockaddr *)&bft_entry->ecmp_entry[ecmp_entry_idx]
-                        ->bfr_nei_addr,
-                    sizeof(
-                        bft_entry->ecmp_entry[ecmp_entry_idx]->bfr_nei_addr));
+                        ->bfr_nei_addr.v6, socklen);
                 if (err < 0) {
                     perror("sendto");
                     return -1;
@@ -761,7 +780,7 @@ bool get_bit_from_bitstring(uint64_t *bitstring, int bit_offset,
 
 int bier_te_processing(uint8_t *buffer, size_t buffer_length,
                        bier_te_internal_t *bft, int socket,
-                       bier_application_t *to_app) {
+                       bier_application_t *to_app, bool use_ipv4) {
     uint32_t bitstring_length_in_64 =
         bft->bitstring_length / 64;  // In 64 bits words
     // For BIER-TE the processing is slightly different
@@ -795,7 +814,7 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length,
         // buffer_length, 12 + bft->bitstring_length / 8,
         // bier_local_processing->args);
         send_packet_to_application(buffer, buffer_length,
-                                   12 + bft->bitstring_length / 8, to_app);
+                                   12 + bft->bitstring_length / 8, to_app, use_ipv4);
     }
 
     // Iterate over all adjacency BP instead of all bits in the bitstring
@@ -810,13 +829,19 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length,
             // memcpy(packet_copy, buffer, buffer_length);
             // TODO: other things to modify?
 
-            struct sockaddr_in6 nei = bft->bfr_nei_addr[i];
+            struct sockaddr *nei = (struct sockaddr *)&bft->bfr_nei_addr[i].v6;
+            socklen_t socklen;
             char buff[400] = {};
-            fprintf(
-                stderr, "Should send from %d to %s\n", bft->local_bfr_id,
-                inet_ntop(AF_INET6, nei.sin6_addr.s6_addr, buff, sizeof(buff)));
+            if (use_ipv4) {
+                inet_ntop(AF_INET, &bft->bfr_nei_addr[i].v4.sin_addr.s_addr, buff, sizeof(buff));
+                socklen = sizeof(struct sockaddr_in);
+            } else {
+                inet_ntop(AF_INET6, bft->bfr_nei_addr[i].v6.sin6_addr.s6_addr, buff, sizeof(buff));
+                socklen = sizeof(struct sockaddr_in6);
+            }
+            fprintf(stderr, "Should send from %d to %s\n", bft->local_bfr_id, buff);
             int err = sendto(socket, buffer, buffer_length, 0,
-                             (struct sockaddr *)&nei, sizeof(nei));
+                             (struct sockaddr *)&bft->bfr_nei_addr->v6, socklen);
             if (err < 0) {
                 perror("Cannot send packet");
                 return -1;
@@ -828,7 +853,7 @@ int bier_te_processing(uint8_t *buffer, size_t buffer_length,
 }
 
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier,
-                    bier_application_t *to_app) {
+                    bier_application_t *to_app, bool use_ipv4) {
     if (buffer_length < 20) {
         return -1;
     }
@@ -837,17 +862,17 @@ int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier,
     //fprintf(stderr, "The given BIFT-ID is %d\n", bift_id);
     //fprintf(stderr, "NB BIFT=%d\n", bier->nb_bift);
     if (bift_id >= bier->nb_bift) {
-        fprintf(stderr, "BIFT-ID not supported, error state\n");
+        fprintf(stderr, "BIFT-ID not supported, error state: %u (max %u)\n", bift_id, bier->nb_bift);
         return -1;
     }
     bier_bift_type_t bift = bier->b[bift_id];
     if (bift.t == BIER) {
         fprintf(stderr, "at router %d\n", bift.bier->local_bfr_id);
         return bier_non_te_processing(buffer, buffer_length, bift.bier,
-                                      bier->socket, to_app);
+                                      bier->socket, to_app, use_ipv4);
     } else if (bift.t == BIER_TE) {
         return bier_te_processing(buffer, buffer_length, bift.bier_te,
-                                  bier->socket, to_app);
+                                  bier->socket, to_app, use_ipv4);
     } else {
         fprintf(stderr, "Should not happen: %d\n", bift.t);
     }

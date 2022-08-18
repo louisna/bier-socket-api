@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
 
     // Dummy listener: listen for packets and output the content on the standard
     // output
-    char packet[4096];
+    uint8_t packet[4096];
     struct sockaddr src_received = {};
     char src_received_txt[150];
     socklen_t addrlen;
