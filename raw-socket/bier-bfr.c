@@ -3,6 +3,8 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+#include <getopt.h>
 
 #include "bier-sender.h"
 #include "include/bier.h"
@@ -11,11 +13,11 @@
 void print_buffer(uint8_t *buffer, size_t length) {
     for (size_t i = 0; i < length; ++i) {
         if (buffer[i] < 16) {
-            printf("0");
+            fprintf(stderr, "0");
         }
-        printf("%x ", buffer[i]);
+        fprintf(stderr, "%x ", buffer[i]);
     }
-    printf("\n");
+    fprintf(stderr, "\n");
 }
 
 void free_bier_payload(bier_payload_t *bier_payload) {
@@ -111,19 +113,76 @@ fill_mc_mapping_error:
     return NULL;
 }
 
-int64_t get_id_from_address(struct in6_addr *addr, bier_addr2bifr_t *mapping) {
+typedef struct {
+    char config_file[NAME_MAX];
+    char bier_socket_path[NAME_MAX];
+    char application_socket_path[NAME_MAX];
+    char ip_2_id_mapping[NAME_MAX];
+    bool use_ipv4;
+} args_t;
+
+void parse_args(args_t *args, int argc, char *argv[]) {
+    memset(args, 0, sizeof(args_t));
+    int opt;
+    bool has_config_file, has_bier_socket_path, has_application_socket_path, has_ip_2_id_mapping;
+    args->use_ipv4 = false;
+
+    while ((opt = getopt(argc, argv, "c:b:a:m:i")) != -1) {
+        switch (opt) {
+            case 'c': {
+                strcpy(args->config_file, optarg);
+                has_config_file = true;
+                break;
+            }
+            case 'b': {
+                strcpy(args->bier_socket_path, optarg);
+                has_bier_socket_path = true;
+                break;
+            }
+            case 'a': {
+                strcpy(args->application_socket_path, optarg);
+                has_application_socket_path = true;
+                break;
+            }
+            case 'm': {
+                strcpy(args->ip_2_id_mapping, optarg);
+                has_ip_2_id_mapping = true;
+                break;
+            }
+            case 'i': {
+                args->use_ipv4 = true;
+                break;
+            }
+            default: {
+                fprintf(stderr, "TODO default usage\n");
+                break;
+            }
+        }
+    }
+
+    if (!(has_config_file && has_bier_socket_path && has_application_socket_path && has_ip_2_id_mapping)) {
+        fprintf(stderr, "Missing arguments: config? %u, bier? %u, application? %u, mapping? %u\n", has_config_file, has_bier_socket_path, has_application_socket_path, has_ip_2_id_mapping);
+        exit(EXIT_FAILURE);
+    }
+}
+
+int64_t get_id_from_address(sockaddr_uniform_t *addr, bier_addr2bifr_t *mapping, bool use_ipv4) {
     for (int i = 0; i < mapping->nb_entries; ++i) {
-        // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3],
-        // addr->s6_addr[3]);
-        if (memcmp(mapping->addrs[i].s6_addr, addr->s6_addr,
-                   sizeof(addr->s6_addr)) == 0) {
+        // fprintf(stderr, "Comparing %x %x\n", mapping->addrs[i].s6_addr[3], addr->s6_addr[3]);
+        int res;
+        if (use_ipv4) {
+            res = memcmp(&mapping->addrs[i].v4.s_addr, &addr->v4.sin_addr.s_addr, sizeof(uint32_t));
+        } else {
+            res = memcmp(mapping->addrs[i].v6.s6_addr, addr->v6.sin6_addr.s6_addr, sizeof(addr->v6.sin6_addr.s6_addr));
+        }
+        if (res == 0) {
             return mapping->bfr_ids[i];
         }
     }
     return -1;
 }
 
-bier_addr2bifr_t *read_addr_mapping(char *filename) {
+bier_addr2bifr_t *read_addr_mapping(char *filename, bool use_ipv4) {
     FILE *file = fopen(filename, "r");
     if (!file) {
         fprintf(stderr, "FIlename: %s\n", filename);
@@ -147,8 +206,8 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     int nb_entries = 0;
     while ((readed = getline(&line, &len, file)) != -1) {
         ++nb_entries;
-        free(line);
-        line = NULL;
+        //free(line);
+        //line = NULL;
     }
 
     if (fseek(file, 0, SEEK_SET) == -1) {
@@ -157,8 +216,7 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
     }
 
     mapping->nb_entries = nb_entries;
-    mapping->addrs =
-        (struct in6_addr *)malloc(sizeof(struct in6_addr) * nb_entries);
+    mapping->addrs = (in_addr_common_t *)malloc(sizeof(in_addr_common_t) * nb_entries);
     if (!mapping->addrs) {
         perror("read_addr_mapping_atoi malloc2");
         return NULL;
@@ -168,7 +226,7 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
         perror("read_addr_mapping_atoi malloc3");
         return NULL;
     }
-    memset(mapping->addrs, 0, sizeof(struct in6_addr) * nb_entries);
+    memset(mapping->addrs, 0, sizeof(in_addr_common_t) * nb_entries);
     memset(mapping->bfr_ids, 0, sizeof(uint64_t) * nb_entries);
 
     for (int i = 0; i < nb_entries; ++i) {
@@ -186,7 +244,13 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
         }
 
         // Parse into IPv6 address
-        if (inet_pton(AF_INET6, addr, mapping->addrs[i].s6_addr) != 1) {
+        int err;
+        if (use_ipv4) {
+            err = inet_pton(AF_INET, addr, &mapping->addrs[i].v4.s_addr);
+        } else {
+            err = inet_pton(AF_INET6, addr, &mapping->addrs[i].v6.s6_addr);
+        }
+        if (err != 1) {
             perror("inet_pton");
             fprintf(stderr, "Cannot convert to address: %s\n", addr);
             fprintf(stderr, "Comprends aps %s - %u\n", addr, prlength);
@@ -195,8 +259,8 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
 
         mapping->bfr_ids[i] = id;
 
-        free(line);
-        line = NULL;
+        //free(line);
+        //line = NULL;
     }
 
     fclose(file);
@@ -205,7 +269,7 @@ bier_addr2bifr_t *read_addr_mapping(char *filename) {
 }
 
 int process_unix_message_is_payload(void *bier_payload_void, bier_bift_t *bier,
-                                    bier_all_apps_t *all_apps) {
+                                    bier_all_apps_t *all_apps, bool use_ipv4) {
     bier_payload_t *bier_payload = (bier_payload_t *)bier_payload_void;
     fprintf(stderr, "BIER payload of %lu bytes\n",
             bier_payload->payload_length);
@@ -224,7 +288,7 @@ int process_unix_message_is_payload(void *bier_payload_void, bier_bift_t *bier,
                                             bier_payload->payload);
     memset(&all_apps->src, 0, sizeof(all_apps->src));
     int err =
-        bier_processing(packet->packet, packet->packet_length, bier, all_apps);
+        bier_processing(packet->packet, packet->packet_length, bier, all_apps, use_ipv4);
     if (err < 0) {
         fprintf(stderr,
                 "Error when processing the BIER packet at the "
@@ -262,7 +326,7 @@ int get_bifr_id_from_mc_addr(int family, uint8_t *mc_addr,
 }
 
 int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
-                                 bier_bift_t *bier, mc_mapping_t *mapping) {
+                                 bier_bift_t *bier, mc_mapping_t *mapping, bool use_ipv4) {
     if (all_apps->nb_apps >= BIER_MAX_APPS) {
         fprintf(stderr, "Cannot add another application to BIER");
         return -1;
@@ -271,11 +335,11 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
     bier_bind_t *bind = (bier_bind_t *)message;
     fprintf(stderr, "Received a bind message for proto %d and UNIX path %s. Is listener? %u\n",
             bind->proto, bind->unix_path, bind->is_listener);
-    struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
-    fprintf(stderr, "Bound to: ");
-    for (int j = 0; j < 16; ++j) {
-        fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
-    }
+    // struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&bind->mc_sockaddr;
+    // fprintf(stderr, "Bound to: ");
+    // for (int j = 0; j < 16; ++j) {
+    //     fprintf(stderr, "%x ", addr->sin6_addr.s6_addr[j]);
+    // }
     fprintf(stderr, "\n");
     bier_application_t *app = &all_apps->apps[all_apps->nb_apps];
     memset(app, 0, sizeof(bier_application_t));
@@ -285,23 +349,36 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
     app->addrlen = sizeof(struct sockaddr_un);
     app->is_listener = bind->is_listener;
 
-    // Also add the IPv6 multicast address
-    // TODO: currently only support for IPv6
-    if (bind->mc_sockaddr.sin6_family != AF_INET6) {
-        fprintf(stderr, "Does not support other family than IPv6\n");
+    // Sanity check
+    if (bind->mc_sockaddr.v6.sin6_family != AF_INET6 && bind->mc_sockaddr.v4.sin_family != AF_INET) {
+        fprintf(stderr, "Does not support other family than IPv6 and IPV4\n");
         return -1;
     }
+
+    // TODO: note that this could be a source of bug
+    bool mc_dst_is_ipv4 = bind->mc_sockaddr.v6.sin6_family != AF_INET;
+
     fprintf(stderr, "P1\n");
-    app->mc_addr_family = AF_INET6;
-    memcpy(app->mc_addr.mc_ipv6.s6_addr, bind->mc_sockaddr.sin6_addr.s6_addr,
-           sizeof(bind->mc_sockaddr.sin6_addr.s6_addr));
+    if (mc_dst_is_ipv4) {
+        app->mc_addr_family = AF_INET;
+        memcpy(&app->mc_addr.mc_ipv4.s_addr, &bind->mc_sockaddr.v4.sin_addr.s_addr, sizeof(bind->mc_sockaddr.v4.sin_addr.s_addr));
+    } else {
+        app->mc_addr_family = AF_INET6;
+        memcpy(app->mc_addr.mc_ipv6.s6_addr, &bind->mc_sockaddr.v6.sin6_addr.s6_addr, sizeof(bind->mc_sockaddr.v6.sin6_addr.s6_addr));
+    }
     fprintf(stderr, "P1,5\n");
 
     if (bind->is_listener) {
+        // TODO: currently only support IPv6 multicast destination
+        if (app->mc_addr_family != AF_INET6) {
+            fprintf(stderr, "Does not support more than IPv6 destination address\n");
+            return -1;
+        }
+
         // TODO: the bitstring should be safer, in case we have a very long
         // bitstring
         int idx_mapping = get_bifr_id_from_mc_addr(
-            AF_INET6, bind->mc_sockaddr.sin6_addr.s6_addr, mapping);
+            AF_INET6, bind->mc_sockaddr.v6.sin6_addr.s6_addr, mapping);
         if (idx_mapping < 0) {
             return -1;
         }
@@ -318,7 +395,7 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
         // repetitions of a packet
         fprintf(stderr, "P3\n");
         struct in6_addr src, dst;
-        memcpy(src.s6_addr, bier->local.sin6_addr.s6_addr, sizeof(src.s6_addr));
+        memcpy(src.s6_addr, bier->local.v6.sin6_addr.s6_addr, sizeof(src.s6_addr));
         memcpy(dst.s6_addr,
                mapping->entries[idx_mapping].src_addr.src_addr6.s6_addr,
                sizeof(dst.s6_addr));
@@ -349,7 +426,7 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
                 "bitstring. Bitstring is: %lx\n",
                 bfir_id, bitstring);
         int err = bier_processing(packet->packet, packet->packet_length, bier,
-                                  all_apps);
+                                  all_apps, use_ipv4);
         if (err < 0) {
             fprintf(stderr, "Error when sending the BIER BINDING\n");
             return -1;
@@ -364,24 +441,15 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 6) {
-        fprintf(stderr,
-                "Usage: %s <config_file> <send UNIX socket> <listen UNIX "
-                "socket> <ipv6-2-id-mapping> <mc groups mapping>\n",
-                argv[0]);
-        exit(EXIT_FAILURE);
-    }
+    args_t args;
+    parse_args(&args, argc, argv);
 
-    char *filename = argv[1];
-    bier_bift_t *bier = read_config_file(filename);
+    bier_bift_t *bier = read_config_file(args.config_file, args.use_ipv4);
     if (!bier) {
         exit(EXIT_FAILURE);
     }
 
-    const char *sending_socket_path = argv[2];
-    const char *listening_socket_path = argv[3];
-
-    bier_addr2bifr_t *mapping = read_addr_mapping(argv[4]);
+    bier_addr2bifr_t *mapping = read_addr_mapping(args.ip_2_id_mapping, args.use_ipv4);
     if (!mapping) {
         exit(1);
     }
@@ -419,11 +487,11 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_un unix_local = {};
     unix_local.sun_family = AF_UNIX;
-    strcpy(unix_local.sun_path, sending_socket_path);
+    strcpy(unix_local.sun_path, args.bier_socket_path);
     int data_len = strlen(unix_local.sun_path) + sizeof(unix_local.sun_family);
 
     // https://medium.com/swlh/getting-started-with-unix-domain-sockets-4472c0db4eb1
-    if (remove(sending_socket_path) == -1 && errno != ENOENT) {
+    if (remove(args.bier_socket_path) == -1 && errno != ENOENT) {
         perror("Remove unix socket path");
         close(sending_socket);
         close(listening_socket);
@@ -458,8 +526,14 @@ int main(int argc, char *argv[]) {
     // BIER socket buffer
     uint16_t buffer_size = 1500;
     uint8_t *buffer = (uint8_t *)malloc(sizeof(uint8_t) * buffer_size);
-    struct sockaddr_in6 remote = {};
-    socklen_t remote_len = sizeof(remote);
+    
+    sockaddr_uniform_t remote = {};
+    socklen_t remote_len;
+    if (args.use_ipv4) {
+        remote_len = sizeof(struct sockaddr_in);
+    } else {
+        remote_len = sizeof(struct sockaddr_in6);
+    }
 
     // UNIX socket buffer
     size_t unix_buffer_size = sizeof(uint8_t) * (4096);
@@ -488,20 +562,33 @@ int main(int argc, char *argv[]) {
                     size_t length = recvfrom(
                         pfds[i].fd, buffer, sizeof(uint8_t) * buffer_size, 0,
                         (struct sockaddr *)&remote, &remote_len);
-                    fprintf(
-                        stderr,
-                        "Received packet of length=%lu on router... from %s ",
-                        length,
-                        inet_ntop(AF_INET6, remote.sin6_addr.s6_addr, buff,
-                                  sizeof(buff)));
+                    const void *err;
+                    if (args.use_ipv4) {
+                        err = inet_ntop(AF_INET, &remote.v4.sin_addr.s_addr, buff, sizeof(buff));
+                    } else {
+                        err = inet_ntop(AF_INET6, remote.v6.sin6_addr.s6_addr, buff, sizeof(buff));
+                    }
+                    if (!err) {
+                        fprintf(stderr, "Cannot convert the received address to human form\n");
+                        perror("inet_ntop bfr");
+                        break;
+                    }
+                    fprintf(stderr, "Going to print the buffer\n");
                     print_buffer(buffer, length);
-                    inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
+                    // inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
                     fprintf(stderr, "src %s\n", buff);
-                    memcpy(&all_apps->src, &remote, sizeof(remote.sin6_addr));
+
+                    memcpy(&all_apps->src, &remote, sizeof(sockaddr_uniform_t));
                     all_apps->src_bfr_id =
-                        get_id_from_address(&remote.sin6_addr, mapping);
+                        get_id_from_address(&remote, mapping, args.use_ipv4);
                     // fprintf(stderr, "THE ID is %d\n", to_app.src_bfr_id);
-                    bier_processing(buffer, length, bier, all_apps);
+                    // With IPv4 it seems that we also get the IPv4 header
+                    if (args.use_ipv4) {
+                        bier_processing(&buffer[20], length - 20, bier, all_apps, args.use_ipv4);
+                    } else {
+                        bier_processing(buffer, length, bier, all_apps, args.use_ipv4);
+                    }
+
                 } else {
                     fprintf(stderr, "UNIX socket\n");
                     // TODO:
@@ -525,7 +612,7 @@ int main(int argc, char *argv[]) {
                     switch (type) {
                         case PACKET: {
                             if (process_unix_message_is_payload(
-                                    decoded_message, bier, all_apps) < 0) {
+                                    decoded_message, bier, all_apps, args.use_ipv4) < 0) {
                                 goto error;
                             }
                             break;
@@ -533,7 +620,7 @@ int main(int argc, char *argv[]) {
                         case BIND: {
                             if (process_unix_message_is_bind(
                                     decoded_message, all_apps, bier,
-                                    mc2id_mapping) < 0) {
+                                    mc2id_mapping, args.use_ipv4) < 0) {
                                 goto error;
                             }
                             break;

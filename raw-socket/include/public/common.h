@@ -13,11 +13,16 @@ typedef enum {
     BIND,
 } bier_message_type;
 
+typedef union {
+    struct sockaddr_in6 v6;
+    struct sockaddr_in v4;
+    struct sockaddr_storage _storage;
+} sockaddr_uniform_t;
+
 typedef struct {
     char unix_path[NAME_MAX];  // Path to the UNIX socket of app using BIER
     uint16_t proto;            // Protocol following the BIER header
-    struct sockaddr_in6
-        mc_sockaddr;   // Multicast source of interest socket address
+    sockaddr_uniform_t mc_sockaddr;   // Multicast source of interest socket address
     bool is_listener;  // True is the bind message concerns a multicast receiver
                        // False if it is a multicast sender (do not warn the sender)
 } bier_bind_t;

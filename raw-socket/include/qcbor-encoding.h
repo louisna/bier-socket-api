@@ -21,8 +21,14 @@ typedef struct {
 typedef struct {
     uint8_t *payload;
     uint64_t payload_length;
-    struct in6_addr ip6_encap_src;
-    struct in6_addr ip6_encap_dst;
+    union {
+        struct in6_addr v6;
+        struct in_addr v4;    
+    } ip6_encap_src;
+    union {
+        struct in6_addr v6;
+        struct in_addr v4;
+    } ip6_encap_dst;
     int64_t upstream_router_bfr_id;
 } bier_received_packet_t;
 

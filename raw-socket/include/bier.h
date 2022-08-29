@@ -22,6 +22,10 @@
 #include <unistd.h>
 #include "public/common.h"
 
+#ifndef NAME_MAX
+#define NAME_MAX 256
+#endif
+
 #define get_bift_id(data) (be32toh(((((uint32_t *)data)[0]))) >> 12)
 #define set_bier_bift_id(____data, ____bift_id)                           \
     {                                                                     \
@@ -79,8 +83,10 @@ typedef struct {
     uint64_t *forwarding_bitmask;  // The bitmask of this BFR entry
     uint32_t bitstring_length;     // Length of `forwarding_bitmask` in bits
     int32_t bfr_nei;  // BIER Forwarding Router Neighbour - Decrepated
-    struct sockaddr_in6 bfr_nei_addr;  // Socket address to reach the BFR
-                                       // neighbors of this entry
+    union {
+        struct sockaddr_in6 v6;  // Socket address to reach the BFR neighbors of this entry
+        struct sockaddr_in v4;
+    } bfr_nei_addr;
 } bier_bft_entry_ecmp_t;
 
 typedef struct {
@@ -106,7 +112,7 @@ typedef struct {
 typedef struct {
     int application_socket;
     bier_application_t apps[BIER_MAX_APPS];
-    struct sockaddr_in6 src; // Source of the encapsulation header
+    sockaddr_uniform_t src; // Source of the encapsulation header
     int src_bfr_id;
     int nb_apps; // Number of apps already using BIER
 } bier_all_apps_t;
@@ -129,7 +135,7 @@ typedef struct {
     uint32_t bitstring_length;
     uint64_t *global_bitstring;
     int nb_adjacencies;
-    struct sockaddr_in6 *bfr_nei_addr;
+    sockaddr_uniform_t *bfr_nei_addr;
     int *adj_to_bp;
 } bier_te_internal_t;
 
@@ -142,8 +148,10 @@ typedef struct {
 } bier_bift_type_t;
 
 typedef struct {
-    struct sockaddr_in6
-        local;    // Socket address with the loopback address of the router
+    union {
+        struct sockaddr_in6 v6;
+        struct sockaddr_in v4;
+    } local; // Socket address with the loopback address of the router
     int socket;   // Socket to send and receive packets
     int nb_bift;  // Number of different BIFT in the configuration
     bier_bift_type_t *b;
@@ -174,9 +182,10 @@ typedef struct {
  * Forwarding Table
  *
  * @param config_filepath path to the configuration file
+ * @param use_ipv4 true if BIER must use IPv4 instead of IPv6
  * @return bier_internal_t* structure containing the BFT information
  */
-bier_bift_t *read_config_file(char *config_filepath);
+bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4);
 
 /**
  * @brief Release the memory associated with the BIER Forwarding Table structure
@@ -201,7 +210,7 @@ void free_bier_bft(bier_bift_t *bft);
  */
 int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
                            bier_internal_t *bft, int socket,
-                           bier_all_apps_t *all_apps);
+                           bier_all_apps_t *all_apps, bool use_ipv4);
 
 /**
  * @brief Same as bier_processing but using the BIER-TE processing
@@ -214,10 +223,10 @@ int bier_non_te_processing(uint8_t *buffer, size_t buffer_length,
  */
 int bier_te_processing(uint8_t *buffer, size_t buffer_length,
                        bier_te_internal_t *bft, int socket,
-                       bier_all_apps_t *all_apps);
+                       bier_all_apps_t *all_apps, bool use_ipv4);
 
 int bier_processing(uint8_t *buffer, size_t buffer_length, bier_bift_t *bier,
-                    bier_all_apps_t *all_apps);
+                    bier_all_apps_t *all_apps, bool use_ipv4);
 
 /**
  * @brief Prints to the standard output the content of the BIER Forwarding table

@@ -188,8 +188,8 @@ int main(int argc, char *argv[]) {
     bier_bind_t bier_bind = {};
     strcpy(bier_bind.unix_path, args.sender_path);
     bier_bind.proto = BIERPROTO_IPV6;
-    bier_bind.mc_sockaddr.sin6_family = AF_INET6;
-    if (inet_pton(AF_INET6, args.loopback, &bier_bind.mc_sockaddr.sin6_addr.s6_addr) == 0) {
+    bier_bind.mc_sockaddr.v6.sin6_family = AF_INET6;
+    if (inet_pton(AF_INET6, args.loopback, &bier_bind.mc_sockaddr.v6.sin6_addr.s6_addr) == 0) {
         perror("IPv6 multicast source address");
         goto error1;
     }

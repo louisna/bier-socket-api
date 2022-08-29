@@ -33,9 +33,14 @@ typedef struct {
     uint32_t header_length;
 } bier_header_t;
 
+typedef union {
+    struct in6_addr v6;
+    struct in_addr v4;
+} in_addr_common_t;
+
 typedef struct {
     int nb_entries;
-    struct in6_addr *addrs;
+    in_addr_common_t *addrs;
     uint64_t *bfr_ids;
 } bier_addr2bifr_t;
 
