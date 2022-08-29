@@ -448,6 +448,7 @@ bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4) {
     if (!file) {
         fprintf(stderr, "Impossible to open the config file: %s\n",
                 config_filepath);
+        perror("open");
         return NULL;
     }
 
@@ -573,8 +574,10 @@ bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4) {
 
     int err;
     if (use_ipv4) {
+        bier_bift->local.v4.sin_family = AF_INET;
         err = inet_pton(AF_INET, local_addr_str, &bier_bift->local.v4.sin_addr.s_addr);
     } else {
+        bier_bift->local.v6.sin6_family = AF_INET6;
         err = inet_pton(AF_INET6, local_addr_str, bier_bift->local.v6.sin6_addr.s6_addr);
     }
     if (err != 1) {
@@ -590,6 +593,7 @@ bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4) {
     }
     if (err < 0) {
         perror("Bind local router");
+        fprintf(stderr, "The addfress was: %s\n", local_addr_str);
         free_bier_bft(bier_bift);
         return NULL;
     }
