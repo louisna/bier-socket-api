@@ -105,6 +105,7 @@ typedef struct {
     } mc_addr; // Application expects to receive packets from it
     int mc_addr_family; // AF_INET or AF_INET6
     bool is_listener;
+    bool is_active;
 } bier_application_t;
 
 #define BIER_MAX_APPS 10

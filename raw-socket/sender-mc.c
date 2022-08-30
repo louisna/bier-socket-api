@@ -129,10 +129,12 @@ int receive_mc_join(uint8_t *packet, ssize_t packet_length, uint64_t *bitstring,
     uint32_t *payload = (uint32_t *)&packet[sizeof(struct ip6_hdr) + sizeof(struct udphdr)];
     uint32_t join = payload[0]; // 1 if it is a join, 0 otherwise
     uint32_t bfr_id = payload[1];
-    if (join) {
+    if (join == 1) {
+        fprintf(stderr, "This is a JOIN\n");
         *bitstring |= 1UL << (bfr_id - 1);
         ++(*nb_receivers_ptr);
     } else {
+        fprintf(stderr, "This is a LEAVE\n");
         *bitstring &= ~(1UL << (bfr_id - 1));
         --(*nb_receivers_ptr);
     }
@@ -244,7 +246,7 @@ int main(int argc, char *argv[]) {
 
         if (pfds.revents & POLLIN) {
             if (verbose) {
-                fprintf(stderr, "Received a join demand\n");
+                fprintf(stderr, "Received a join notification\n");
             }
 
             ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet), (struct sockaddr *)&_src_received, &addrlen, &_bier_info_in);
@@ -277,10 +279,12 @@ int main(int argc, char *argv[]) {
         // Re-activate the sending after some time
         struct timeval now;
         gettimeofday(&now, NULL);
-        if (((now.tv_sec - last_sent.tv_sec) * 1000000 + now.tv_usec - last_sent.tv_usec) >= timeout_send * 1000) {
+        if (((now.tv_sec - last_sent.tv_sec) * 1000000 + now.tv_usec - last_sent.tv_usec) >= timeout_send * 10000) {
             pfds.events |= POLLOUT;
         }
     }
+
+    fprintf(stderr, "Sent %d packets... Closing\n", args.nb_packets_to_send);
 
     // Close and quit
     close(socket_fd);

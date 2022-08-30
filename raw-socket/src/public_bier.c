@@ -105,7 +105,7 @@ ssize_t recvfrom_bier(int socket, void *buf, size_t len,
 }
 
 int bind_bier_generic(int socket, const struct sockaddr_un *bier_sock_path,
-                      bier_bind_t *bind_to, int is_listener) {
+                      bier_bind_t *bind_to, int is_listener, int is_join) {
     size_t qcbor_length =
         sizeof(bier_bind_t) + 200;  // Make room for other information encoding
     UsefulBuf_MAKE_STACK_UB(Buffer, qcbor_length);
@@ -129,6 +129,7 @@ int bind_bier_generic(int socket, const struct sockaddr_un *bier_sock_path,
     }
     QCBOREncode_AddBytesToMap(&ctx, "mc_sockaddr", mc_sockaddr_buf);
     QCBOREncode_AddInt64ToMap(&ctx, "is_listener", is_listener);
+    QCBOREncode_AddInt64ToMap(&ctx, "is_bind", is_join);
     QCBOREncode_CloseMap(&ctx);
 
     UsefulBufC EncodedCBOR;
@@ -150,9 +151,13 @@ int bind_bier_generic(int socket, const struct sockaddr_un *bier_sock_path,
 
 int bind_bier_sender(int socket, const struct sockaddr_un *bier_sock_path,
                      bier_bind_t *bind_to) {
-    return bind_bier_generic(socket, bier_sock_path, bind_to, 0);
+    return bind_bier_generic(socket, bier_sock_path, bind_to, 0, 1);
 }
 
 int bind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bind_to) {
-    return bind_bier_generic(socket, bier_sock_path, bind_to, 1);
+    return bind_bier_generic(socket, bier_sock_path, bind_to, 1, 1);
+}
+
+int unbind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bind_to) {
+    return bind_bier_generic(socket, bier_sock_path, bind_to, 1, 0);
 }

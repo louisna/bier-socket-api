@@ -5,14 +5,65 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <getopt.h>
 
 #include "include/public/bier.h"
 
-int main(int argc, char *argv[]) {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s <Listening UNIX socket> <IPv6 multicast listening address> <BIER daemon socket>\n", argv[0]);
-        exit(EXIT_SUCCESS);
+typedef struct {
+    char listening_unix_path[NAME_MAX];
+    char mc_addr[NAME_MAX];
+    char bier_unix_path[NAME_MAX];
+    int nb_packets_listen;
+} args_t;
+
+void parse_args(args_t *args, int argc, char *argv[]) {
+    memset(args, 0, sizeof(args_t));
+    int opt;
+    bool has_listening_unix_path, has_mc_addr, has_bier_unix_path;
+    args->nb_packets_listen = 1;
+
+    while ((opt = getopt(argc, argv, "l:g:b:n:")) != -1) {
+        switch (opt) {
+            case 'l': {
+                strcpy(args->listening_unix_path, optarg);
+                has_listening_unix_path = true;
+                break;
+            }
+            case 'g': {
+                strcpy(args->mc_addr, optarg);
+                has_mc_addr = true;
+                break;
+            }
+            case 'b': {
+                strcpy(args->bier_unix_path, optarg);
+                has_bier_unix_path = true;
+                break;
+            }
+            case 'n': {
+                int nb = atoi(optarg);
+                if (nb == 0) {
+                    fprintf(stderr, "Cannot convert to int: %s\n", optarg);
+                    exit(EXIT_FAILURE);
+                }
+                args->nb_packets_listen = nb;
+                break;
+            }
+            default: {
+                fprintf(stderr, "TODO default usage\n");
+                break;
+            }
+        }
     }
+
+    if (!(has_listening_unix_path && has_mc_addr && has_bier_unix_path)) {
+        fprintf(stderr, "Should provide all the arguments\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+int main(int argc, char *argv[]) {
+    args_t args;
+    parse_args(&args, argc, argv);
 
     struct sockaddr_un addr = {};
     int socket_fd;
@@ -26,10 +77,10 @@ int main(int argc, char *argv[]) {
 
     // This socket will listen to incoming packets from the BIER daemon
     addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path, argv[1]);
+    strcpy(addr.sun_path, args.listening_unix_path);
 
     // https://medium.com/swlh/getting-started-with-unix-domain-sockets-4472c0db4eb1
-    if (remove(argv[1]) == -1 && errno != ENOENT) {
+    if (remove(args.listening_unix_path) == -1 && errno != ENOENT) {
         perror("Remove unix socket path");
         close(socket_fd);
         exit(EXIT_FAILURE);
@@ -47,16 +98,16 @@ int main(int argc, char *argv[]) {
     // Destination is UNIX socket running the BIER process
     struct sockaddr_un dst = {};  
     dst.sun_family = AF_UNIX;
-    strcpy(dst.sun_path, argv[3]);
+    strcpy(dst.sun_path, args.bier_unix_path);
     int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
 
     bier_bind_t bier_bind = {};
-    strcpy(bier_bind.unix_path, argv[1]);
+    strcpy(bier_bind.unix_path, args.listening_unix_path);
     bier_bind.proto = BIERPROTO_IPV6;
     struct sockaddr_in6 mc_group = {
         .sin6_family = AF_INET6,
     };
-    if (inet_pton(AF_INET6, argv[2], &mc_group.sin6_addr.s6_addr) == 0) {
+    if (inet_pton(AF_INET6, args.mc_addr, &mc_group.sin6_addr.s6_addr) == 0) {
         perror("IPv6 MC destination");
         exit(EXIT_FAILURE);
     }
@@ -67,7 +118,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Confirmed\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Bound to multicast address %s\n", argv[2]);
+    fprintf(stderr, "Bound to multicast address %s\n", args.mc_addr);
 
     // Dummy listener: listen for packets and output the content on the standard
     // output
@@ -76,7 +127,8 @@ int main(int argc, char *argv[]) {
     char src_received_txt[150];
     socklen_t addrlen;
     bier_info_t bier_info;
-    while (1) {
+    int nb_received = 0;
+    while (nb_received < args.nb_packets_listen) {
         ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet),
                                          &src_received, &addrlen, &bier_info);
         fprintf(stderr, "Received %lu bytes from %s\n", received,
@@ -96,7 +148,15 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "%x ", packet[i]);
         }
         fprintf(stderr, "\n");
+        ++nb_received;
     }
+
+    fprintf(stderr, "Received %d packets... Closing the program\n", nb_received);
+    if (unbind_bier(socket_fd, &dst, &bier_bind) < 0) {
+        fprintf(stderr, "Confirmed2\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "Send a LEAVE message\n");
 
     close(socket_fd);
 }

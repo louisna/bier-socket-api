@@ -637,7 +637,10 @@ int find_correct_unix_destination(bier_all_apps_t *all_apps, uint8_t *payload, u
     struct in6_addr packet_ipv6_dst = {};
     memcpy(&packet_ipv6_dst.s6_addr, &payload[24], sizeof(packet_ipv6_dst.s6_addr));
 
-    for (int i = 0; i < all_apps->nb_apps; ++i) {
+    for (int i = 0; i < BIER_MAX_APPS; ++i) {
+        if (!all_apps->apps[i].is_active) {
+            continue;
+        }
         if (all_apps->apps[i].proto != bier_proto) {
             continue;
         } else if (bier_proto == BIERPROTO_RESERVED_RAW) {

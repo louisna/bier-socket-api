@@ -68,4 +68,6 @@ int bind_bier(int socket, const struct sockaddr_un *bier_sock_path,
 int bind_bier_sender(int socket, const struct sockaddr_un *bier_sock_path,
                      bier_bind_t *bind_to);
 
+int unbind_bier(int socket, const struct sockaddr_un *bier_sock_path, bier_bind_t *bier_to);
+
 #endif

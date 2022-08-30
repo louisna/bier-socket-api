@@ -23,8 +23,10 @@ typedef struct {
     char unix_path[NAME_MAX];  // Path to the UNIX socket of app using BIER
     uint16_t proto;            // Protocol following the BIER header
     sockaddr_uniform_t mc_sockaddr;   // Multicast source of interest socket address
-    bool is_listener;  // True is the bind message concerns a multicast receiver
+    bool is_listener;  // True if the bind message concerns a multicast receiver
                        // False if it is a multicast sender (do not warn the sender)
+    bool is_join; // True if the bind message concerns an MC join
+                  // False if the bind message concerns an MC leave
 } bier_bind_t;
 
 /* BIER Next Protocol Identifiers */
