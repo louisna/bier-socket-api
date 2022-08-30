@@ -30,6 +30,7 @@ mc_mapping_t *fill_mc_mapping(char *mapping_filename) {
     FILE *file = fopen(mapping_filename, "r");
     if (!file) {
         perror("fill_mc_mapping fopen");
+        fprintf(stderr, "The file: %s\n", mapping_filename);
         return NULL;
     }
 
@@ -118,16 +119,17 @@ typedef struct {
     char bier_socket_path[NAME_MAX];
     char application_socket_path[NAME_MAX];
     char ip_2_id_mapping[NAME_MAX];
+    char mc_group_mapping[NAME_MAX];
     bool use_ipv4;
 } args_t;
 
 void parse_args(args_t *args, int argc, char *argv[]) {
     memset(args, 0, sizeof(args_t));
     int opt;
-    bool has_config_file, has_bier_socket_path, has_application_socket_path, has_ip_2_id_mapping;
+    bool has_config_file, has_bier_socket_path, has_application_socket_path, has_ip_2_id_mapping, has_mc_group_mapping;
     args->use_ipv4 = false;
 
-    while ((opt = getopt(argc, argv, "c:b:a:m:i")) != -1) {
+    while ((opt = getopt(argc, argv, "c:b:a:m:g:i")) != -1) {
         switch (opt) {
             case 'c': {
                 strcpy(args->config_file, optarg);
@@ -147,6 +149,11 @@ void parse_args(args_t *args, int argc, char *argv[]) {
             case 'm': {
                 strcpy(args->ip_2_id_mapping, optarg);
                 has_ip_2_id_mapping = true;
+                break;
+            }
+            case 'g': {
+                strcpy(args->mc_group_mapping, optarg);
+                has_mc_group_mapping = true;
                 break;
             }
             case 'i': {
@@ -185,7 +192,7 @@ int64_t get_id_from_address(sockaddr_uniform_t *addr, bier_addr2bifr_t *mapping,
 bier_addr2bifr_t *read_addr_mapping(char *filename, bool use_ipv4) {
     FILE *file = fopen(filename, "r");
     if (!file) {
-        fprintf(stderr, "FIlename: %s\n", filename);
+        fprintf(stderr, "Filename: %s\n", filename);
         perror("read_addr_mapping");
         return NULL;
     }
@@ -356,7 +363,7 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
     }
 
     // TODO: note that this could be a source of bug
-    bool mc_dst_is_ipv4 = bind->mc_sockaddr.v6.sin6_family != AF_INET;
+    bool mc_dst_is_ipv4 = bind->mc_sockaddr.v6.sin6_family == AF_INET;
 
     fprintf(stderr, "P1\n");
     if (mc_dst_is_ipv4) {
@@ -471,7 +478,7 @@ int main(int argc, char *argv[]) {
     memset(all_apps, 0, sizeof(bier_all_apps_t));
     all_apps->application_socket = listening_socket;
 
-    mc_mapping_t *mc2id_mapping = fill_mc_mapping(argv[5]);
+    mc_mapping_t *mc2id_mapping = fill_mc_mapping(args.mc_group_mapping);
     if (!mapping) {
         exit(EXIT_FAILURE);
     }

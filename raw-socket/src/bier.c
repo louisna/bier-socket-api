@@ -489,7 +489,7 @@ bier_bift_t *read_config_file(char *config_filepath, bool use_ipv4) {
     // Number of different BIFT (each with an increasing ID for now)
     // TODO: generalize this
     int nb_bifts = atoi(line);
-    printf("NB BIFT=%d\n", nb_bifts);
+    fprintf(stderr, "NB BIFT=%d ()\n", nb_bifts);
     if (nb_bifts == 0) {
         fprintf(stderr, "Cannot convert to nb bifts: %s\n", line);
     }
