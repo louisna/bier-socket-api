@@ -2,6 +2,7 @@ use bier_rust::dijkstra::dijkstra;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::Write as fmtWrite;
+use std::fmt::format;
 use std::fs::File;
 use std::hash::Hash;
 use std::io::Write;
@@ -45,8 +46,9 @@ fn main() {
 
     let file = File::open(&args.topo_file).expect("Impossible to open the file");
     let reader = BufReader::new(file);
-    let graph = parse_file(reader.lines(), node_to_id, id_to_address);
+    let graph = parse_file(reader.lines(), node_to_id, &id_to_address);
     bier_config_build(&graph, &args.output_file, args.do_te, args.bier_te_to_bp).unwrap();
+    create_mc_groups(&id_to_address, 3, 3);
 }
 
 fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
@@ -294,7 +296,7 @@ fn write_bier_te_table(
 fn parse_file(
     lines: Lines<BufReader<File>>,
     node_to_id: HashMap<String, u32>,
-    id_to_address: HashMap<u32, String>,
+    id_to_address: &HashMap<u32, String>,
 ) -> Vec<Node> {
     let mut graph = Vec::new();
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
@@ -339,6 +341,29 @@ fn parse_file(
     }
 
     graph
+}
+
+fn create_mc_groups(id_to_address: &HashMap<u32, String>, sender_up_to: usize, nb_group_per_node: usize) {
+    let mut s = String::new();
+    for i in 1..sender_up_to + 1 {
+        for j in 1..nb_group_per_node + 1 {
+            let mc_format = format!("ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}", router=i, group_nb=j, loopback=id_to_address[&(i as u32)], bifr_id=i);
+            s.push_str(&mc_format);
+            s.push_str("\n");
+        }
+    }
+
+    // Write in output file the result
+    let pathname = "mc_group_mapping.txt";
+    let path = std::path::Path::new(&pathname);
+    let mut file = match File::create(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("Impossible to create the mapping file {:?}: {}", path.to_str(), e);
+            panic!();
+        }
+    };
+    file.write_all(s.as_bytes()).unwrap();
 }
 
 #[cfg(test)]
