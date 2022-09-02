@@ -160,6 +160,15 @@ int main(int argc, char *argv[]) {
         perror("socket");
         exit(EXIT_FAILURE);
     }
+
+    // This socket is only used to communicate with the BIER daemon
+    // DCE does not like to use a bound socket to do that
+    int socket_to_bier = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (socket_to_bier < 0) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
     struct sockaddr_un to_bier = {
         .sun_family = AF_UNIX,
     };
@@ -195,7 +204,7 @@ int main(int argc, char *argv[]) {
         perror("IPv6 multicast source address");
         goto error1;
     }
-    if (bind_bier_sender(socket_fd, &to_bier, &bier_bind) < 0) {
+    if (bind_bier_sender(socket_to_bier, &to_bier, &bier_bind) < 0) {
         goto error1;
     }
     if (verbose) {
@@ -205,6 +214,7 @@ int main(int argc, char *argv[]) {
     // Start "asynchronous" procedure
     // Receives: BFER joining the Multicast group
     // Sends: Multicast data
+    // TODO: clean by using two pollfd because now the socket may be closed...
     int nfds = 1;
     struct pollfd pfds = {};
     pfds.fd = socket_fd;
@@ -260,7 +270,7 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Send out a packet\n");
                 }
 
-                ssize_t nb_sent = sendto_bier(socket_fd, my_packet->packet, my_packet->packet_length, (struct sockaddr *)&to_bier, sizeof(to_bier), 6, &bier_info_out);
+                ssize_t nb_sent = sendto_bier(socket_to_bier, my_packet->packet, my_packet->packet_length, (struct sockaddr *)&to_bier, sizeof(to_bier), 6, &bier_info_out);
                 if (nb_sent < 0) {
                     goto error2;
                 }
@@ -288,6 +298,7 @@ int main(int argc, char *argv[]) {
 
     // Close and quit
     close(socket_fd);
+    close(socket_to_bier);
     free(my_packet);
     exit(EXIT_SUCCESS);
 

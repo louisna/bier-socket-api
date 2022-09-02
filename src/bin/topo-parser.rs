@@ -347,7 +347,7 @@ fn create_mc_groups(id_to_address: &HashMap<u32, String>, sender_up_to: usize, n
     let mut s = String::new();
     for i in 1..sender_up_to + 1 {
         for j in 1..nb_group_per_node + 1 {
-            let mc_format = format!("ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}", router=i, group_nb=j, loopback=id_to_address[&(i as u32)], bifr_id=i);
+            let mc_format = format!("ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}", router=i, group_nb=j, loopback=id_to_address[&((i - 1) as u32)], bifr_id=i);
             s.push_str(&mc_format);
             s.push_str("\n");
         }

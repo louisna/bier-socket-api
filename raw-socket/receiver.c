@@ -75,6 +75,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // This socket is only used to communicate with the BIER daemon
+    // DCE does not like to use a bound socket to do that
+    int socket_to_bier = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (socket_to_bier < 0) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
     // This socket will listen to incoming packets from the BIER daemon
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, args.listening_unix_path);
@@ -114,7 +122,7 @@ int main(int argc, char *argv[]) {
     memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
 
     // "Bind" to IPv6 multicast address
-    if (bind_bier(socket_fd, &dst, &bier_bind) < 0) {
+    if (bind_bier(socket_to_bier, &dst, &bier_bind) < 0) {
         fprintf(stderr, "Confirmed\n");
         exit(EXIT_FAILURE);
     }
@@ -152,11 +160,12 @@ int main(int argc, char *argv[]) {
     }
 
     fprintf(stderr, "Received %d packets... Closing the program\n", nb_received);
-    if (unbind_bier(socket_fd, &dst, &bier_bind) < 0) {
+    if (unbind_bier(socket_to_bier, &dst, &bier_bind) < 0) {
         fprintf(stderr, "Confirmed2\n");
         exit(EXIT_FAILURE);
     }
     fprintf(stderr, "Send a LEAVE message\n");
 
     close(socket_fd);
+    close(socket_to_bier);
 }
