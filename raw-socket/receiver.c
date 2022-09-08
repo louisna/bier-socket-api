@@ -122,6 +122,7 @@ int main(int argc, char *argv[]) {
     memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
 
     // "Bind" to IPv6 multicast address
+    fprintf(stderr, "Will bind to multicast address\n");
     if (bind_bier(socket_to_bier, &dst, &bier_bind) < 0) {
         fprintf(stderr, "Confirmed\n");
         exit(EXIT_FAILURE);

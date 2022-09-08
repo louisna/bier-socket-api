@@ -240,12 +240,12 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in6 _src_received = {};
     
     // Timeout information
-    int timeout_send = 2000; // ms
+    int timeout_send = 4000; // ms
     struct timeval last_sent;
     gettimeofday(&last_sent, NULL);
 
     while (nb_packets_left > 0) {
-        int polled = poll(&pfds, nfds, timeout_send);
+        int polled = poll(&pfds, nfds, -1);
         if (polled == -1) {
             perror("poll");
             goto error2;
@@ -264,6 +264,7 @@ int main(int argc, char *argv[]) {
                 goto error2;
             }
             receive_mc_join(packet, received, &bitstring, &nb_receivers);
+            pfds.events |= POLLOUT;
         } else if (pfds.revents & POLLOUT) {
             if (nb_receivers) {
                 if (verbose) {
@@ -276,10 +277,12 @@ int main(int argc, char *argv[]) {
                 }
 
                 --nb_packets_left;
+                sleep(1);
+            } else {
+                // Emulates the timeout, even if no receiver
+                pfds.events &= ~(POLLOUT);
             }
             
-            // Emulates the timeout, even if no receiver
-            pfds.events &= ~(POLLOUT);
 
         } else {
             fprintf(stderr, "Poll did not work as expected");
