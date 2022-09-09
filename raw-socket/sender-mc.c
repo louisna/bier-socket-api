@@ -145,6 +145,25 @@ int receive_mc_join(uint8_t *packet, ssize_t packet_length, uint64_t *bitstring,
     }
 }
 
+int read_packets(uint8_t *packet, ssize_t packet_length, uint64_t *bitstring, int *nb_receivers_ptr) {
+    ssize_t read_bytes = 0;
+    // Received packets are only IPv6
+    while (read_bytes < packet_length) {
+        uint8_t *local_packet = &packet[read_bytes]; // So this is an IPv6 header
+        struct ip6_hdr *ip6 = (struct ip6_hdr *)local_packet;
+        ssize_t local_packet_length = sizeof(struct ip6_hdr) + ip6->ip6_ctlun.ip6_un1.ip6_un1_plen;
+        
+        // Read packet
+        if (receive_mc_join(packet, local_packet_length, bitstring, nb_receivers_ptr) < 0) {
+            return -1;
+        }
+
+        read_bytes += local_packet_length;
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     args_t args;
     parse_args(&args, argc, argv);
@@ -263,7 +282,11 @@ int main(int argc, char *argv[]) {
             if (received < 0) {
                 goto error2;
             }
-            receive_mc_join(packet, received, &bitstring, &nb_receivers);
+            if (read_packets(packet, received, &bitstring, &nb_receivers) < 0) {
+                fprintf(stderr, "Error when handling the packets confirmed\n");
+                goto error2;
+            }
+            
             pfds.events |= POLLOUT;
         } else if (pfds.revents & POLLOUT) {
             if (nb_receivers) {
