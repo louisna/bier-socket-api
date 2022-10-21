@@ -1,2 +1,2 @@
-# bier-rust
-Rust implementation of Bier encapsulation socket
+# bier-socket-api
+Socket-like API and data-plane implementation of the Bit Index Explicit Replication (BIER) multicast forwarding mechanism. 
