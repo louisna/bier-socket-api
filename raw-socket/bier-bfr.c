@@ -10,16 +10,18 @@
 #include "include/bier.h"
 #include "include/qcbor-encoding.h"
 
-void print_buffer(uint8_t *buffer, size_t length) {
-    for (size_t i = 0; i < length; ++i) {
-        if (buffer[i] < 16) {
-            fprintf(stderr, "0");
-        }
-        fprintf(stderr, "%x ", buffer[i]);
-    }
-    fprintf(stderr, "\n");
-}
+/**
+ * @brief BIER daemon. Emulates a BIER forwarding router that receives packets from an IP socket or a UNIX socket.
+ * It can be connected to applications using the UNIX socket. The number of applications are limited to 10 for a same BFR.
+ * This daemon can also act as a BFIR and a BFER.
+ */
 
+
+/**
+ * @brief Free the structure.
+ * 
+ * @param bier_payload Structure to free.
+ */
 void free_bier_payload(bier_payload_t *bier_payload) {
     free(bier_payload->bitstring);
     free(bier_payload->payload);
@@ -114,6 +116,21 @@ fill_mc_mapping_error:
     return NULL;
 }
 
+void usage(char *prog_name) {
+    fprintf(stderr, "USAGE:\n");
+    fprintf(stderr, "    %s [OPTIONS] -c <> -b <> -a <> -m <> -g <>\n", prog_name);
+    fprintf(stderr,
+            "    -c config file: static BIFT configuration file path\n");
+    fprintf(stderr,
+            "    -b bier socket addr: path to the UNIX socket path of the BIER daemon\n");
+    fprintf(stderr,
+            "    -a application socket path: [DECREPATED] path to the UNIX socket of the application that uses the daemon\n");
+    fprintf(stderr,
+            "    -m mapping path: mapping from IP address to BFR-id\n");
+    fprintf(stderr, "    -g group path: path to the file containing the multicast groups and the corresponding source BFR-ids\n");
+    fprintf(stderr, "    -i: use IPv4 instead of IPv6 if added\n");
+}
+
 typedef struct {
     char config_file[NAME_MAX];
     char bier_socket_path[NAME_MAX];
@@ -162,8 +179,8 @@ void parse_args(args_t *args, int argc, char *argv[]) {
                 break;
             }
             default: {
-                fprintf(stderr, "TODO default usage\n");
-                break;
+                usage(argv[0]);
+                exit(EXIT_FAILURE);
             }
         }
     }
@@ -724,10 +741,6 @@ int main(int argc, char *argv[]) {
                         perror("inet_ntop bfr");
                         break;
                     }
-                    fprintf(stderr, "Going to print the buffer\n");
-                    print_buffer(buffer, length);
-                    // inet_ntop(AF_INET6, &remote, buff, sizeof(remote));
-                    fprintf(stderr, "src %s\n", buff);
 
                     memcpy(&all_apps->src, &remote, sizeof(sockaddr_uniform_t));
                     all_apps->src_bfr_id =

@@ -30,20 +30,14 @@ typedef struct {
 void usage(char *prog_name) {
     fprintf(stderr, "USAGE:\n");
     fprintf(stderr, "    %s [OPTIONS] -d <> -l <> -b <> -s <>\n", prog_name);
+    fprintf(stderr, "    -g multicast addr: address of the multicast group the receiver wants to listen to\n");
     fprintf(stderr,
-            "    -d multicast address: multicast destination address\n");
-    fprintf(stderr,
-            "    -l loopback address: loopback address of the sender\n");
-    fprintf(stderr,
-            "    -b bier daemon path: path to the UNUX socket of the BIER "
+            "    -b bier daemon path: path to the UNIX socket of the BIER "
             "daemon to communicate with the sender\n");
     fprintf(stderr,
-            "    -s sender path: path to the UNIX socket of enable the BIER "
-            "daemon to communicate with the sender\n");
-    fprintf(stderr, "    -n nb: number of packets to send: (default: 1)\n");
-    fprintf(stderr,
-            "    -i bift-id: BIFT-ID to use when sending the packets (default: "
-            "1)\n");
+            "    -l listener path: path to the UNIX socket to enable the BIER "
+            "daemon to communicate with the receiver\n");
+    fprintf(stderr, "    -n nb: number of packets to receive: (default: 1)\n");
     fprintf(stderr, "    -v: verbose mode");
 }
 
@@ -80,7 +74,7 @@ void parse_args(args_t *args, int argc, char *argv[]) {
                 break;
             }
             default: {
-                fprintf(stderr, "TODO default usage\n");
+                usage(argv[0]); 
                 break;
             }
         }

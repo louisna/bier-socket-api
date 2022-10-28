@@ -75,10 +75,10 @@ void usage(char *prog_name) {
     fprintf(stderr,
             "    -l loopback address: loopback address of the sender\n");
     fprintf(stderr,
-            "    -b bier daemon path: path to the UNUX socket of the BIER "
+            "    -b bier daemon path: path to the UNIX socket of the BIER "
             "daemon to communicate with the sender\n");
     fprintf(stderr,
-            "    -s sender path: path to the UNIX socket of enable the BIER "
+            "    -s sender path: path to the UNIX socket to enable the BIER "
             "daemon to communicate with the sender\n");
     fprintf(stderr, "    -n nb: number of packets to send: (default: 1)\n");
     fprintf(stderr,
