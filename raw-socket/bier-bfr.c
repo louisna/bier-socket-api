@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/un.h>
+#include <syslog.h>
 
 #include "bier-sender.h"
 #include "include/bier.h"
@@ -541,6 +542,9 @@ int process_unix_message_is_bind(void *message, bier_all_apps_t *all_apps,
 }
 
 int main(int argc, char *argv[]) {
+    // Enable logs by default.
+    openlog(NULL, LOG_DEBUG | LOG_PID | LOG_PERROR, LOG_USER);
+
     args_t args;
     parse_args(&args, argc, argv);
 

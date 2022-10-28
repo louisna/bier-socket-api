@@ -1,13 +1,24 @@
 #include <arpa/inet.h>
 #include <errno.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <syslog.h>
 #include <unistd.h>
-#include <getopt.h>
 
 #include "include/public/bier.h"
+
+/**
+ * @brief Multicast receiver example program that communicates with the BIER
+ * daemon through the socket-like API.
+ *
+ * The multicast reeivers receivers messages from the server. The messages are
+ * UDP dummy payloads, within an IPv6 header. When the receiver program is
+ * launched, it sends a JOIN notification to the BIER daemon to join the
+ * multicast flow.
+ */
 
 typedef struct {
     char listening_unix_path[NAME_MAX];
@@ -15,6 +26,26 @@ typedef struct {
     char bier_unix_path[NAME_MAX];
     int nb_packets_listen;
 } args_t;
+
+void usage(char *prog_name) {
+    fprintf(stderr, "USAGE:\n");
+    fprintf(stderr, "    %s [OPTIONS] -d <> -l <> -b <> -s <>\n", prog_name);
+    fprintf(stderr,
+            "    -d multicast address: multicast destination address\n");
+    fprintf(stderr,
+            "    -l loopback address: loopback address of the sender\n");
+    fprintf(stderr,
+            "    -b bier daemon path: path to the UNUX socket of the BIER "
+            "daemon to communicate with the sender\n");
+    fprintf(stderr,
+            "    -s sender path: path to the UNIX socket of enable the BIER "
+            "daemon to communicate with the sender\n");
+    fprintf(stderr, "    -n nb: number of packets to send: (default: 1)\n");
+    fprintf(stderr,
+            "    -i bift-id: BIFT-ID to use when sending the packets (default: "
+            "1)\n");
+    fprintf(stderr, "    -v: verbose mode");
+}
 
 void parse_args(args_t *args, int argc, char *argv[]) {
     memset(args, 0, sizeof(args_t));
@@ -56,12 +87,15 @@ void parse_args(args_t *args, int argc, char *argv[]) {
     }
 
     if (!(has_listening_unix_path && has_mc_addr && has_bier_unix_path)) {
-        fprintf(stderr, "Should provide all the arguments\n");
+        usage(argv[0]);
         exit(EXIT_FAILURE);
     }
 }
 
 int main(int argc, char *argv[]) {
+    // Enable logs by default.
+    openlog(NULL, LOG_DEBUG | LOG_PID | LOG_PERROR, LOG_USER);
+
     args_t args;
     parse_args(&args, argc, argv);
 
@@ -101,10 +135,10 @@ int main(int argc, char *argv[]) {
         close(socket_fd);
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Bound to UNIX socket\n");
+    syslog(LOG_DEBUG, "Bound to UNIX socket\n");
 
     // Destination is UNIX socket running the BIER process
-    struct sockaddr_un dst = {};  
+    struct sockaddr_un dst = {};
     dst.sun_family = AF_UNIX;
     strcpy(dst.sun_path, args.bier_unix_path);
     int data_len = strlen(dst.sun_path) + sizeof(dst.sun_family);
@@ -122,12 +156,11 @@ int main(int argc, char *argv[]) {
     memcpy(&bier_bind.mc_sockaddr, &mc_group, sizeof(struct sockaddr_in6));
 
     // "Bind" to IPv6 multicast address
-    fprintf(stderr, "Will bind to multicast address\n");
+    syslog(LOG_DEBUG, "Will bind to multicast address\n");
     if (bind_bier(socket_to_bier, &dst, &bier_bind) < 0) {
-        fprintf(stderr, "Confirmed\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Bound to multicast address %s\n", args.mc_addr);
+    syslog(LOG_DEBUG, "Bound to multicast address %s\n", args.mc_addr);
 
     // Dummy listener: listen for packets and output the content on the standard
     // output
@@ -140,8 +173,8 @@ int main(int argc, char *argv[]) {
     while (nb_received < args.nb_packets_listen) {
         ssize_t received = recvfrom_bier(socket_fd, packet, sizeof(packet),
                                          &src_received, &addrlen, &bier_info);
-        fprintf(stderr, "Received %lu bytes from %s\n", received,
-                src_received_txt);
+        syslog(LOG_DEBUG, "Received %lu bytes from %s\n", received,
+               src_received_txt);
         if (received < 0) {
             perror("received bier");
             break;
@@ -151,7 +184,8 @@ int main(int argc, char *argv[]) {
             perror("inet ntop");
             break;
         }
-        // fprintf(stderr, "The ID of the router that sent the packet: %ld\n", bier_info.recv_info.upstream_router_bfr_id);
+        // fprintf(stderr, "The ID of the router that sent the packet: %ld\n",
+        // bier_info.recv_info.upstream_router_bfr_id);
         fprintf(stderr, "First few bytes are: ");
         for (int i = 0; i < 10; ++i) {
             fprintf(stderr, "%x ", packet[i]);
@@ -160,12 +194,12 @@ int main(int argc, char *argv[]) {
         ++nb_received;
     }
 
-    fprintf(stderr, "Received %d packets... Closing the program\n", nb_received);
+    syslog(LOG_DEBUG, "Received %d packets... Closing the program\n",
+           nb_received);
     if (unbind_bier(socket_to_bier, &dst, &bier_bind) < 0) {
-        fprintf(stderr, "Confirmed2\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Send a LEAVE message\n");
+    syslog(LOG_DEBUG, "Send a LEAVE message\n");
 
     close(socket_fd);
     close(socket_to_bier);
