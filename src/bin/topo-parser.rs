@@ -414,24 +414,31 @@ fn parse_topo(output_template: &str, topo: &[Node]) {
     for i in 0..nb_nodes {
         let node_a = &topo[i];
         let id_a = node_a._id;
-        for (j, _) in node_a.neighbours.iter() {
+        for (jj, (j, _)) in node_a.neighbours.iter().enumerate() {
             let node_b = &topo[*j];
             let id_b = node_b._id;
-            let link_a_b = format!("{}:{:x}{:x}::1/64", base_link, id_a, id_b);
-            let link_b_a = format!("{}:{:x}{:x}::2/64", base_link, id_a, id_b);
+            if links.contains_key(&(i, *j)) || links.contains_key(&(*j, i)) {
+                // The link exists but not the command
+                let link_a_b = links.get(&(*j, i)).ok_or(links.get(&(i, *j))).unwrap();
+                write!(s, "{} {} {} {}/64 {}\n", id_a, *j, jj, link_a_b, loopbacks.get(&(id_b as usize)).unwrap()).unwrap();
+                continue;
+            }
+            let link_a_b = format!("{}:{:x}{:x}::1", base_link, id_a, id_b);
+            let link_b_a = format!("{}:{:x}{:x}::2", base_link, id_a, id_b);
 
             write!(
                 s,
-                "{} {} {} {}\n",
+                "{} {} {} {}/64 {}\n",
                 id_a,
                 *j,
+                jj,
                 link_a_b,
                 loopbacks.get(&(id_b as usize)).unwrap()
             )
             .unwrap();
 
-            links.insert((i, *j), link_a_b);
-            links.insert((*j, i), link_b_a);
+            links.insert((i, *j), link_b_a);
+            links.insert((*j, i), link_a_b);
         }
     }
     let pathname = format!(
