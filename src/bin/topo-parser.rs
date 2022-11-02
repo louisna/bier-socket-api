@@ -2,7 +2,6 @@ use bier_rust::dijkstra::dijkstra;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::Write as fmtWrite;
-use std::fmt::format;
 use std::fs::File;
 use std::hash::Hash;
 use std::io::Write;
@@ -31,6 +30,8 @@ struct Cli {
     do_te: bool,
     #[structopt(long = "te2bp")]
     bier_te_to_bp: bool,
+    #[structopt(long = "topo")]
+    build_topo: Option<String>,
 }
 
 fn main() {
@@ -49,6 +50,11 @@ fn main() {
     let graph = parse_file(reader.lines(), node_to_id, &id_to_address);
     bier_config_build(&graph, &args.output_file, args.do_te, args.bier_te_to_bp).unwrap();
     create_mc_groups(&id_to_address, 3, 3);
+
+    // Build the topology information (for Mininet).
+    if let Some(s) = args.build_topo {
+        parse_topo(&s, &graph);
+    }
 }
 
 fn parse_node_to_id(node_to_id_file: File) -> HashMap<String, u32> {
@@ -196,7 +202,9 @@ fn bier_config_build(
         s += &graph.iter().fold(String::new(), |s, node| {
             s + &format!("{id} {name}\n", id = node._id, name = node.name)
         });
-        s += &link_to_bp.iter().fold(String::new(), |s, (&(a, b), &v)| s + &format!("{} {} {}\n", a, b, v));
+        s += &link_to_bp.iter().fold(String::new(), |s, (&(a, b), &v)| {
+            s + &format!("{} {} {}\n", a, b, v)
+        });
 
         let path = std::path::Path::new("mapping-link-to-bp.txt");
         let mut file = File::create(&path)?;
@@ -343,11 +351,21 @@ fn parse_file(
     graph
 }
 
-fn create_mc_groups(id_to_address: &HashMap<u32, String>, sender_up_to: usize, nb_group_per_node: usize) {
+fn create_mc_groups(
+    id_to_address: &HashMap<u32, String>,
+    sender_up_to: usize,
+    nb_group_per_node: usize,
+) {
     let mut s = String::new();
     for i in 1..sender_up_to + 1 {
         for j in 1..nb_group_per_node + 1 {
-            let mc_format = format!("ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}", router=i, group_nb=j, loopback=id_to_address[&((i - 1) as u32)], bifr_id=i);
+            let mc_format = format!(
+                "ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}",
+                router = i,
+                group_nb = j,
+                loopback = id_to_address[&((i - 1) as u32)],
+                bifr_id = i
+            );
             s.push_str(&mc_format);
             s.push_str("\n");
         }
@@ -359,11 +377,115 @@ fn create_mc_groups(id_to_address: &HashMap<u32, String>, sender_up_to: usize, n
     let mut file = match File::create(&path) {
         Ok(f) => f,
         Err(e) => {
-            println!("Impossible to create the mapping file {:?}: {}", path.to_str(), e);
+            println!(
+                "Impossible to create the mapping file {:?}: {}",
+                path.to_str(),
+                e
+            );
             panic!();
         }
     };
     file.write_all(s.as_bytes()).unwrap();
+}
+
+fn parse_topo(output_template: &str, topo: &[Node]) {
+    let nb_nodes = topo.len();
+    let graph_id = graph_node_to_usize(topo);
+
+    // Set the loopbacks.
+    let mut loopbacks = HashMap::new();
+    let mut s = String::new();
+    for i in 0..nb_nodes {
+        let lo = format!("babe:cafe:{:x}::1/64", i);
+        write!(s, "{} {}\n", i, lo).unwrap();
+        loopbacks.insert(i, lo);
+    }
+    let pathname = format!(
+        "{output_template}-loopbacks.txt",
+        output_template = output_template
+    );
+    let path = std::path::Path::new(&pathname);
+    let mut file = File::create(&path).unwrap();
+    file.write_all(s.as_bytes()).unwrap();
+
+    let mut s = String::new();
+    let base_link = "babe:cafe:dead";
+    let mut links = HashMap::new();
+    for i in 0..nb_nodes {
+        let node_a = &topo[i];
+        let id_a = node_a._id;
+        for (j, _) in node_a.neighbours.iter() {
+            let node_b = &topo[*j];
+            let id_b = node_b._id;
+            let link_a_b = format!("{}:{:x}{:x}::1/64", base_link, id_a, id_b);
+            let link_b_a = format!("{}:{:x}{:x}::2/64", base_link, id_a, id_b);
+
+            write!(
+                s,
+                "{} {} {} {}\n",
+                id_a,
+                *j,
+                link_a_b,
+                loopbacks.get(&(id_b as usize)).unwrap()
+            )
+            .unwrap();
+
+            links.insert((i, *j), link_a_b);
+            links.insert((*j, i), link_b_a);
+        }
+    }
+    let pathname = format!(
+        "{output_template}-links.txt",
+        output_template = output_template
+    );
+    let path = std::path::Path::new(&pathname);
+    let mut file = File::create(&path).unwrap();
+    file.write_all(s.as_bytes()).unwrap();
+
+    // Finally all the paths must be statically added for each router.
+    let mut s = String::new();
+    for source in 0..nb_nodes {
+        let predecessors = dijkstra(&graph_id, &source).unwrap();
+        println!("PREDECESSORS: {:?}", predecessors);
+
+        // Construct the next hop mapping, possibly there are multiple paths so multiple output interfaces.
+        let next_hop: Vec<Vec<usize>> = (0..nb_nodes)
+            .map(|i| get_all_out_interfaces_to_destination(&predecessors, source, i))
+            .collect();
+        println!("MAPPING: {:?}", next_hop);
+        let node = topo.get(source).unwrap();
+
+        // For each destination, find the correct next hop.
+        for (i, dst) in next_hop.into_iter().enumerate() {
+            if i == source {
+                continue; // Same node.
+            }
+            // Only use the first path.
+            // `hop` is the node id of the next hop
+            let hop = dst[0];
+
+            let link_ip = links.get(&(source, hop)).unwrap();
+            let destination_ip = loopbacks.get(&i).unwrap();
+
+            // Get the output interface of the node.
+            let output_itf = node.neighbours.iter().position(|&(r, _)| r == hop).unwrap();
+
+            // hop is not correct here!
+            write!(
+                s,
+                "{} {} {} {}\n",
+                source, output_itf, link_ip, destination_ip
+            )
+            .unwrap();
+        }
+        let pathname = format!(
+            "{output_template}-paths.txt",
+            output_template = output_template
+        );
+        let path = std::path::Path::new(&pathname);
+        let mut file = File::create(&path).unwrap();
+        file.write_all(s.as_bytes()).unwrap();
+    }
 }
 
 #[cfg(test)]
