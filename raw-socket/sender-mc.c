@@ -84,6 +84,8 @@ void usage(char *prog_name) {
     fprintf(stderr,
             "    -i bift-id: BIFT-ID to use when sending the packets (default: "
             "1)\n");
+    fprintf(stderr,
+            "   -r nb: number of receivers before starting the flow (default: 1\n");
     fprintf(stderr, "    -v: verbose mode");
 }
 
@@ -94,6 +96,7 @@ typedef struct {
     char sender_path[NAME_MAX];
     int nb_packets_to_send;
     int bift_id;
+    int nb_receivers;
     bool verbose;
 } args_t;
 
@@ -104,8 +107,9 @@ void parse_args(args_t *args, int argc, char *argv[]) {
     args->nb_packets_to_send = 1;
     args->bift_id = 1;
     args->verbose = false;
+    args->nb_receivers = 1;
 
-    while ((opt = getopt(argc, argv, "d:l:b:s:n:i:v")) != -1) {
+    while ((opt = getopt(argc, argv, "d:l:b:s:n:i:r:v")) != -1) {
         switch (opt) {
             case 'v': {
                 args->verbose = true;
@@ -146,6 +150,15 @@ void parse_args(args_t *args, int argc, char *argv[]) {
                     perror("Cannot parse bift id");
                 } else {
                     args->bift_id = id;
+                }
+                break;
+            }
+            case 'r': {
+                int nb = atoi(optarg);
+                if (nb == 0) {
+                    perror("Cannot parse nb receivers");
+                } else {
+                    args->nb_receivers = nb;
                 }
                 break;
             }
@@ -353,7 +366,7 @@ int main(int argc, char *argv[]) {
 
             pfds.events |= POLLOUT;
         } else if (pfds.revents & POLLOUT) {
-            if (nb_receivers) {
+            if (nb_receivers == args.nb_receivers) {
                 syslog(LOG_DEBUG, "Send out a packet\n");
 
                 ssize_t nb_sent = sendto_bier(
@@ -365,7 +378,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 --nb_packets_left;
-                sleep(1);
+                // sleep(1);
             } else {
                 // Emulates the timeout, even if no receiver.
                 pfds.events &= ~(POLLOUT);

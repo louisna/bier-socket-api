@@ -7,6 +7,8 @@ from mininet.node import OVSController
 import sys
 import time
 import argparse
+import os
+import shutil
 
 
 class MyTopo(Topo):
@@ -43,9 +45,17 @@ def simpleRun(args):
         "links": args.links,
         "paths": args.paths
     }
+    logs_dir = args.logs
+    if os.path.exists(logs_dir) and os.path.isdir(logs_dir):
+        shutil.rmtree(logs_dir)
+    os.makedirs(logs_dir, exist_ok=False)
+    os.makedirs(os.path.join(logs_dir, "pcaps"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "logs"), exist_ok=True)
     topo = MyTopo(**args_dict)
     net = Mininet(topo = topo, controller = OVSController)
     net.start()
+    
+    mc_groups = parse_mc_groups(f"{args.config}/mc_group_mapping.txt")
 
     dumpNodeConnections(net.hosts)
 
@@ -91,7 +101,7 @@ def simpleRun(args):
             net[id1].cmd(cmd)
 
             # Start a tcpdump capture for each interface
-            # net[id1].cmd(f"tcpdump -i {id1}-eth{itf} -w pcaps/{id1}-{itf}.pcap &")
+            net[id1].cmd(f"tcpdump -i {id1}-eth{itf} -w {logs_dir}/pcaps/{id1}-{itf}.pcap &")
 
     with open(args_dict["paths"]) as fd:
         txt = fd.read().split("\n")
@@ -110,13 +120,13 @@ def simpleRun(args):
 
     if not args.cli:
         if args.multicast:  # Multicast forwarding
-            pass
+            do_multicast(net, args, loopbacks, mc_groups, nb_nodes)
         else:  # Unicast forwarding
             id_recv = -1
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue  # Sender is not a receiver
-                cmd = f"perf stat -o logs/perf-receiver-{str(id_recv)}.txt unicast/receiver {loopbacks[f'{id_recv}']} 100 2> logs/receiver-{str(id_recv)}.txt &"
+                cmd = f"perf stat -o {logs_dir}/logs/perf-receiver-{str(id_recv)}.txt unicast/receiver {loopbacks[f'{id_recv}']} 100 2> {logs_dir}/logs/receiver-{str(id_recv)}.txt &"
                 print(cmd)
                 net[f"{id_recv}"].cmd(cmd)
             time.sleep(3)
@@ -124,7 +134,7 @@ def simpleRun(args):
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue
-                cmd = f"perf stat -o logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 2> logs/sender-{str(args.sender)}-{str(id_recv)}.txt"
+                cmd = f"perf stat -o {logs_dir}/logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 2> {logs_dir}/logs/sender-{str(args.sender)}-{str(id_recv)}.txt"
                 print(cmd)
                 net[f"{args.sender}"].cmd(cmd)
     else:
@@ -178,15 +188,49 @@ def simpleRun(args):
     net.stop()
 
 
+def do_multicast(net, args, loopbacks, mc_groups, nb_nodes):
+    tmp_bfr = lambda idx: f"raw-socket/bier-bfr -c {args.config}/bier-config-{idx}.txt -b /tmp/socket-bfr-{idx} -a /tmp/socket-app-{idx} -m {args.loopbacks} -g {args.config}/mc_group_mapping.txt > {args.logs}/logs/bfr-{idx}.txt 2>&1 &"
+    tmp_app = lambda idx, mc_i: f"raw-socket/receiver -l /tmp/socket-app-{idx}-{mc_i} -g {mc_groups[mc_i]} -b /tmp/socket-bfr-{idx} -n 100 > {args.logs}/logs/app-{idx}-{mc_i}.txt 2>&1 &"
+    tmp_sdr = lambda mc_i: f"raw-socket/sender-mc -d {mc_groups[mc_i]} -l {loopbacks[str(mc_i)]} -b /tmp/socket-bfr-{mc_i} -s /tmp/sender-sock-{mc_i} -n 100 -i 1 -r {args.nb_receivers} > {args.logs}/logs/sender-{mc_i}-{mc_i}.txt 2>&1"
+    
+    # BIER
+    for i in range(nb_nodes):
+        cmd = f"perf stat -o {args.logs}/logs/perf-bier-{str(i)}.txt {tmp_bfr(i)}"
+        print(cmd)
+        net[str(i)].cmd(cmd)
+    
+    print("Setup BIER...")
+    time.sleep(2)
+    
+    # Receivers
+    nb = -1
+    while nb < args.nb_receivers:
+        nb += 1
+        if nb == args.sender: continue
+        cmd = f"perf stat -o {args.logs}/logs/perf-mc-receiver-{str(nb)}.txt {tmp_app(nb, 0)}"
+        print(cmd)
+        net[str(i)].cmd(cmd)
+    
+    print("Setup receiver...")
+    time.sleep(2)
+    
+    # Sender
+    cmd = tmp_sdr(args.sender)
+    print(cmd)
+    # net[str(args.sender)].cmd(cmd)
+    
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--loopbacks", type=str, default="configs/topo-loopbacks.txt")
     parser.add_argument("--links", type=str, default="configs/topo-links.txt")
     parser.add_argument("--paths", type=str, default="configs/topo-paths.txt")
+    parser.add_argument("--config", type=str, help="Path to the config files", default="configs")
     parser.add_argument("--cli", action="store_true")
     parser.add_argument("--sender", type=int, default="0", help="Select the node sending the trafic")
     parser.add_argument("--nb-receivers", type=int, default=1, help="Select the number of receivers")
     parser.add_argument("--multicast", action="store_true", help="Use multicast forwarding instead of unicast")
+    parser.add_argument("--logs", type=str, default="logs-1-unicast", help="Repository containing the logs")
     args = parser.parse_args()
     simpleRun(args)
 

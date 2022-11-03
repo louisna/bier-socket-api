@@ -20,10 +20,6 @@ struct Node {
 struct Cli {
     #[structopt(short = "t")]
     topo_file: String,
-    #[structopt(long = "n2id")]
-    node_2_id_file: String,
-    #[structopt(long = "id2ipv6")]
-    id_2_ipv6_file: String,
     #[structopt(short = "o")]
     output_file: String,
     #[structopt(long = "enable-te")]
@@ -38,18 +34,11 @@ struct Cli {
 
 fn main() {
     let args = Cli::from_args();
-
-    let node_to_id_file =
-        File::open(&args.node_2_id_file).expect("Impossible to open the node id mapping");
-    let node_to_id = parse_node_to_id(node_to_id_file);
-
-    let id_to_address_file =
-        File::open(&args.id_2_ipv6_file).expect("Impossible to open the id ipv6 mapping");
-    let id_to_address = parse_id_to_ipv6(id_to_address_file);
-
+        
     let file = File::open(&args.topo_file).expect("Impossible to open the file");
     let reader = BufReader::new(file);
-    let graph = parse_file(reader.lines(), node_to_id, &id_to_address);
+    let (graph, node_to_id, id_to_address) = parse_file(reader.lines(), !args.asymetric);
+    
     bier_config_build(&graph, &args.output_file, args.do_te, args.bier_te_to_bp).unwrap();
     create_mc_groups(&id_to_address, 3, 3);
 
@@ -180,7 +169,9 @@ fn bier_config_build(
         write_bier_table(&mut s, graph, &next_hop, node);
 
         // BIER-TE BIFT-ID
-        write_bier_te_table(&mut s, &graph_id, node, &link_to_bp, graph);
+        if do_te {
+            write_bier_te_table(&mut s, &graph_id, node, &link_to_bp, graph);
+        }
 
         println!("Pour node {}:\n{}", graph[node].name, s);
         println!("L'id du node {}", graph[node]._id);
@@ -238,7 +229,7 @@ fn write_bier_table(s: &mut String, graph: &[Node], next_hop: &[Vec<usize>], nod
             hops_vec.push((bfm, next_hop_str));
         }
         let st = hops_vec.iter().fold(String::new(), |s, (bfm, nxthop)| {
-            s + " " + &format!("{} {}", bfm, nxthop)
+            s + " " + &format!("{} {}", bfm, nxthop[..nxthop.len() - 3].to_string())
         });
         writeln!(s, "{} {} {}", bfr_id + 1, hops_vec.len(), st).unwrap();
     }
@@ -305,40 +296,42 @@ fn write_bier_te_table(
 
 fn parse_file(
     lines: Lines<BufReader<File>>,
-    node_to_id: HashMap<String, u32>,
-    id_to_address: &HashMap<u32, String>,
-) -> Vec<Node> {
+    symetric: bool,
+) -> (Vec<Node>, HashMap<String, usize>, HashMap<u32, String>) {
     let mut graph = Vec::new();
     let mut name_to_id: HashMap<String, usize> = HashMap::new();
     let mut current_id: usize = 0;
 
-    // TODO
+    let mut id2ipv6 = HashMap::new();
     for line_unw in lines {
         let line = line_unw.unwrap();
         let split: Vec<&str> = line.split(' ').collect();
         let a_id: usize = *name_to_id.entry(split[0].to_string()).or_insert(current_id);
         if a_id == current_id {
             current_id += 1;
-            let id = node_to_id[&split[0].to_string()];
+            let id = name_to_id[&split[0].to_string()] as u32;
             let node = Node {
                 name: split[0].to_string(),
                 neighbours: Vec::new(),
                 _id: id,
-                ipv6_addr_str: id_to_address[&id].to_string(),
+                ipv6_addr_str: format!("babe:cafe:{:x}::1/64", id).to_string(),
             };
+            id2ipv6.insert(id, node.ipv6_addr_str.to_owned());
             graph.push(node);
         }
+
 
         let b_id: usize = *name_to_id.entry(split[1].to_string()).or_insert(current_id);
         if b_id == current_id {
             current_id += 1;
-            let id = node_to_id[&split[1].to_string()];
+            let id = name_to_id[&split[1].to_string()] as u32;
             let node = Node {
                 name: split[1].to_string(),
                 neighbours: Vec::new(),
                 _id: id,
-                ipv6_addr_str: id_to_address[&id].to_string(),
+                ipv6_addr_str: format!("babe:cafe:{:x}::1/64", id).to_string(),
             };
+            id2ipv6.insert(id, node.ipv6_addr_str.to_owned());
             graph.push(node);
         }
 
@@ -347,10 +340,12 @@ fn parse_file(
 
         // Add in neighbours adjacency list
         graph[a_id].neighbours.push((b_id, metric));
-        graph[b_id].neighbours.push((a_id, metric));
+        if symetric {
+            graph[b_id].neighbours.push((a_id, metric));
+        }
     }
 
-    graph
+    (graph, name_to_id, id2ipv6)
 }
 
 fn create_mc_groups(
@@ -455,13 +450,11 @@ fn parse_topo(output_template: &str, topo: &[Node]) {
     let mut s = String::new();
     for source in 0..nb_nodes {
         let predecessors = dijkstra(&graph_id, &source).unwrap();
-        println!("PREDECESSORS: {:?}", predecessors);
 
         // Construct the next hop mapping, possibly there are multiple paths so multiple output interfaces.
         let next_hop: Vec<Vec<usize>> = (0..nb_nodes)
             .map(|i| get_all_out_interfaces_to_destination(&predecessors, source, i))
             .collect();
-        println!("MAPPING: {:?}", next_hop);
         let node = topo.get(source).unwrap();
 
         // For each destination, find the correct next hop.

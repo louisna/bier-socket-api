@@ -145,6 +145,7 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length, bool 
             err = inet_pton(AF_INET, ptr, &entry_ecmp->bfr_nei_addr.v4.sin_addr.s_addr);
             fprintf(stderr, "Gonna parse this address: %s\n", ptr);
         } else {
+            fprintf(stderr, "This is IPv6");
             entry_ecmp->bfr_nei_addr.v6.sin6_family = AF_INET6;
             err = inet_pton(AF_INET6, ptr, entry_ecmp->bfr_nei_addr.v6.sin6_addr.s6_addr);
         }
@@ -198,7 +199,7 @@ void free_bier_bft(bier_bift_t *bift) {
 
 int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4) {
     char *line = NULL;
-    ssize_t readed = 0;
+    int readed = 0;
     size_t len = 0;
 
     if ((readed = getline(&line, &len, file)) == -1) {
@@ -212,6 +213,8 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4
         free(bier_bft);
         return -1;
     }
+
+    fprintf(stderr, "Number of BIFT entries: %d\n", nb_bft_entry);
 
     bier_bft->nb_bft_entry = nb_bft_entry;
 
@@ -257,6 +260,8 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4
     }
     bier_bft->local_bfr_id = local_bfr_id;
 
+    fprintf(stderr, "Local BFR ID: %d\n", local_bfr_id);
+
     //free(line);
     //line = NULL;
 
@@ -268,6 +273,7 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4
             free(bier_bft);
             return -1;
         }
+        fprintf(stderr, "READED %d\n", readed);
         bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length, use_ipv4);
         if (!bft_entry) {
             fprintf(stderr, "Cannot parse line: %s\n", line);
@@ -426,9 +432,11 @@ int fill_bier_internal_bier_te(FILE *file, bier_te_internal_t *bier_internal, bo
 
         int err;
         if (use_ipv4) {
+            fprintf(stderr, "uses IPv4");
             bier_internal->bfr_nei_addr[i].v4.sin_family = AF_INET;
             err = inet_pton(AF_INET, ptr, &bier_internal->bfr_nei_addr[i].v4.sin_addr.s_addr);
         } else {
+            fprintf(stderr, "uses IPv6");
             bier_internal->bfr_nei_addr[i].v6.sin6_family = AF_INET6;
             err = inet_pton(AF_INET6, ptr, bier_internal->bfr_nei_addr[i].v6.sin6_addr.s6_addr);
         }
