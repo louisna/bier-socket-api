@@ -58,7 +58,7 @@ def simpleRun(args):
             if len(loopback_info) == 0: continue
             id1, loopback = loopback_info.split(" ")
             cmd = f"ip -6 addr add {loopback} dev lo"
-            loopbacks[id1] = loopback
+            loopbacks[id1] = loopback[:-3]
             print(cmd)
             net[id1].cmd(cmd)
             # Enable IPv6 forwarding
@@ -102,6 +102,7 @@ def simpleRun(args):
             print(id1, cmd)
             net[id1].cmd(cmd)
     
+    # net["0"].cmd("unicast/sender babe:cafe:0::1 babe:cafe:3::1 1000 &")
 
     if nb_nodes - 1 < args.nb_receivers:
         print(f"NB NODES: {nb_nodes}, but NB RECEIVERS: {args.nb_receivers}")
@@ -115,13 +116,17 @@ def simpleRun(args):
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue  # Sender is not a receiver
-                net[f"{id_recv}"].cmd(f"perf stat unicast/receiver {loopbacks[f'{id_recv}']} 100 > logs/receiver-{str(id_recv)}.txt 2>&1 &")
+                cmd = f"perf stat -o logs/perf-receiver-{str(id_recv)}.txt unicast/receiver {loopbacks[f'{id_recv}']} 100 2> logs/receiver-{str(id_recv)}.txt &"
+                print(cmd)
+                net[f"{id_recv}"].cmd(cmd)
             time.sleep(3)
             id_recv = -1
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue
-                net[f"{args.sender}"].cmd(f"perf stat unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 > logs/sender-{str(args.sender)}-{str(id_recv)}.txt 2>&1")
+                cmd = f"perf stat -o logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 2> logs/sender-{str(args.sender)}-{str(id_recv)}.txt"
+                print(cmd)
+                net[f"{args.sender}"].cmd(cmd)
     else:
         CLI(net)
                 
