@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
         printf("Send a packet\n");
+	    // sleep(1);
     }
 
     close(sock_fd);

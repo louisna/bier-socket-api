@@ -346,12 +346,18 @@ int get_bifr_id_from_mc_addr(int family, uint8_t *mc_addr,
         return -1;
     }
 
+    fprintf(stderr, "F1\n");
+
     for (int i = 0; i < mapping->nb_entries; ++i) {
+        fprintf(stderr, "DD1\n");
+        void *a = (void *)&mapping->entries[i].mc_addr.mc_addr6.s6_addr;
+        fprintf(stderr, "DD2\n");
         if (memcmp(mapping->entries[i].mc_addr.mc_addr6.s6_addr, mc_addr,
                    sizeof(mapping->entries[i].mc_addr.mc_addr6.s6_addr)) == 0) {
             return i;
         }
     }
+    fprintf(stderr, "F2\n");
 
     fprintf(stderr, "Did not found the BIFR ID of the address: ");
     for (int i = 0; i < 16; ++i) {
@@ -370,6 +376,7 @@ int send_multicast_join_or_leave(bier_bind_t *bind, mc_mapping_t *mapping, bier_
                 "Does not support more than IPv6 destination address\n");
         return -1;
     }
+    fprintf(stderr, "D1\n");
 
     // TODO: the bitstring should be safer, in case we have a very long
     // bitstring
@@ -500,6 +507,7 @@ int process_unix_message_is_bind_join(bier_bind_t *bind, bier_all_apps_t *all_ap
             return -1;
         }
     }
+    fprintf(stderr, "P2\n");
     free(bind);
     ++all_apps->nb_apps;
     return 0;

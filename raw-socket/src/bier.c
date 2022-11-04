@@ -145,7 +145,6 @@ bier_bft_entry_t *parse_line(char *line_config, uint32_t bitstring_length, bool 
             err = inet_pton(AF_INET, ptr, &entry_ecmp->bfr_nei_addr.v4.sin_addr.s_addr);
             fprintf(stderr, "Gonna parse this address: %s\n", ptr);
         } else {
-            fprintf(stderr, "This is IPv6");
             entry_ecmp->bfr_nei_addr.v6.sin6_family = AF_INET6;
             err = inet_pton(AF_INET6, ptr, entry_ecmp->bfr_nei_addr.v6.sin6_addr.s6_addr);
         }
@@ -273,7 +272,6 @@ int fill_bier_internal_bier(FILE *file, bier_internal_t *bier_bft, bool use_ipv4
             free(bier_bft);
             return -1;
         }
-        fprintf(stderr, "READED %d\n", readed);
         bier_bft_entry_t *bft_entry = parse_line(line, bitstring_length, use_ipv4);
         if (!bft_entry) {
             fprintf(stderr, "Cannot parse line: %s\n", line);

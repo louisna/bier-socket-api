@@ -88,7 +88,7 @@ def simpleRun(args):
         txt = fd.read().split("\n")
         for link_info in txt:
             if len(link_info) == 0: continue
-            id1, _, itf, link, loopback = link_info.split(" ")
+            id1, id2, itf, link, loopback = link_info.split(" ")
             cmd = f"sysctl net.ipv6.conf.{id1}-eth{itf}.forwarding=1"
             net[id1].cmd(cmd)
             cmd = f"sysctl net.ipv6.conf.{id1}-eth{itf}.mc_forwarding=1"
@@ -96,12 +96,16 @@ def simpleRun(args):
 
             cmd = f"sysctl net.ipv4.{id1}-eth{itf}.ip_forward=1"
             net[id1].cmd(cmd)
-            cmd = f"ip -6 addr add {link} dev {id1}-eth{itf}"
+            
+            # Attempt to get the interface number
+            intfs = net[id1].connectionsTo(net[id2])
+            intf_name = str(intfs[0][0])
+            cmd = f"ip -6 addr add {link} dev {intf_name}"
             print(id1, cmd)
             net[id1].cmd(cmd)
 
             # Start a tcpdump capture for each interface
-            net[id1].cmd(f"tcpdump -i {id1}-eth{itf} -w {logs_dir}/pcaps/{id1}-{itf}.pcap &")
+            net[id1].cmd(f"tcpdump -i {intf_name} -w {logs_dir}/pcaps/{id1}-{itf}.pcap &")
 
     with open(args_dict["paths"]) as fd:
         txt = fd.read().split("\n")
@@ -111,6 +115,9 @@ def simpleRun(args):
             cmd = f"ip -6 route add {loopback} via {link}"
             print(id1, cmd)
             net[id1].cmd(cmd)
+    
+    print("Setup links")
+    time.sleep(5)
     
     # net["0"].cmd("unicast/sender babe:cafe:0::1 babe:cafe:3::1 1000 &")
 
@@ -137,6 +144,8 @@ def simpleRun(args):
                 cmd = f"perf stat -o {logs_dir}/logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 2> {logs_dir}/logs/sender-{str(args.sender)}-{str(id_recv)}.txt"
                 print(cmd)
                 net[f"{args.sender}"].cmd(cmd)
+            print("Exiting...")
+            time.sleep(2)
     else:
         CLI(net)
                 
@@ -189,35 +198,45 @@ def simpleRun(args):
 
 
 def do_multicast(net, args, loopbacks, mc_groups, nb_nodes):
-    tmp_bfr = lambda idx: f"raw-socket/bier-bfr -c {args.config}/bier-config-{idx}.txt -b /tmp/socket-bfr-{idx} -a /tmp/socket-app-{idx} -m {args.loopbacks} -g {args.config}/mc_group_mapping.txt > {args.logs}/logs/bfr-{idx}.txt 2>&1 &"
+    tmp_bfr = lambda idx: f"raw-socket/bier-bfr -c {args.config}/bier-config-{idx}.txt -b /tmp/socket-bfr-{idx} -a /tmp/socket-app-{idx} -m {args.loopbacks} -g {args.config}/mc_group_mapping.txt > {args.logs}/logs/bier-{idx}.txt 2>&1 &"
     tmp_app = lambda idx, mc_i: f"raw-socket/receiver -l /tmp/socket-app-{idx}-{mc_i} -g {mc_groups[mc_i]} -b /tmp/socket-bfr-{idx} -n 100 > {args.logs}/logs/app-{idx}-{mc_i}.txt 2>&1 &"
-    tmp_sdr = lambda mc_i: f"raw-socket/sender-mc -d {mc_groups[mc_i]} -l {loopbacks[str(mc_i)]} -b /tmp/socket-bfr-{mc_i} -s /tmp/sender-sock-{mc_i} -n 100 -i 1 -r {args.nb_receivers} > {args.logs}/logs/sender-{mc_i}-{mc_i}.txt 2>&1"
+    tmp_sdr = lambda mc_i: f"raw-socket/sender-mc -d {mc_groups[mc_i]} -l {loopbacks[str(mc_i)]} -b /tmp/socket-bfr-{mc_i} -s /tmp/sender-sock-{mc_i} -n 100 -i 1 -r {args.nb_receivers} > {args.logs}/logs/sender-{mc_i}-{mc_i}.txt 2>&1 &"
     
     # BIER
     for i in range(nb_nodes):
-        cmd = f"perf stat -o {args.logs}/logs/perf-bier-{str(i)}.txt {tmp_bfr(i)}"
+        cmd = f"{tmp_bfr(i)}"
         print(cmd)
         net[str(i)].cmd(cmd)
     
     print("Setup BIER...")
-    time.sleep(2)
+    time.sleep(5)
+    
+    # Sender
+    cmd = f"perf stat -o {args.logs}/logs/perf-sender-{args.sender}.txt {tmp_sdr(args.sender)}"
+    print(cmd)
+    net[str(args.sender)].cmd(cmd)
+    
+    time.sleep(5)
+    print("Setup sender...")
     
     # Receivers
     nb = -1
-    while nb < args.nb_receivers:
+    while nb < args.nb_receivers - 1:
         nb += 1
         if nb == args.sender: continue
-        cmd = f"perf stat -o {args.logs}/logs/perf-mc-receiver-{str(nb)}.txt {tmp_app(nb, 0)}"
+        cmd = f"{tmp_app(nb, 0)}"
         print(cmd)
         net[str(i)].cmd(cmd)
-    
-    print("Setup receiver...")
-    time.sleep(2)
-    
-    # Sender
-    cmd = tmp_sdr(args.sender)
+    nb += 1
+    while nb == args.sender:
+        nb += 1
+        continue
+    cmd = f"perf stat -o {args.logs}/logs/perf-mc-receiver-{str(nb)}.txt {tmp_app(nb, 0)[:-1]}"
     print(cmd)
-    # net[str(args.sender)].cmd(cmd)
+    net[str(i)].cmd(cmd)
+    
+    print("Exiting...")
+    time.sleep(2)
     
 
 if __name__ == "__main__":

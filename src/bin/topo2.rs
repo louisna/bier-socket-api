@@ -163,7 +163,8 @@ fn bier_config_build(
         let mut s = String::new();
 
         // Write constant information to the string
-        writeln!(s, "{}\n{}", &graph[node].ipv6_addr_str, nb_bift_id).unwrap();
+        let addr = &graph[node].ipv6_addr_str;
+        writeln!(s, "{}\n{}", addr[..addr.len() - 3].to_string(), nb_bift_id).unwrap();
 
         // BIER (non-TE) BIFT-ID
         write_bier_table(&mut s, graph, &next_hop, node);
@@ -336,7 +337,7 @@ fn parse_file(
         }
 
         // Get the metric from the line
-        let metric: i32 = split[2].parse::<i32>().unwrap();
+        let metric: i32 = split[3].parse::<i32>().unwrap();
 
         // Add in neighbours adjacency list
         graph[a_id].neighbours.push((b_id, metric));
@@ -356,11 +357,12 @@ fn create_mc_groups(
     let mut s = String::new();
     for i in 1..sender_up_to + 1 {
         for j in 1..nb_group_per_node + 1 {
+            let lo = &id_to_address[&((i - 1) as u32)];
             let mc_format = format!(
                 "ff00:{router:x}::{group_nb:x} {loopback} {bifr_id}",
                 router = i,
                 group_nb = j,
-                loopback = id_to_address[&((i - 1) as u32)],
+                loopback = lo[..lo.len() - 3].to_string(),
                 bifr_id = i
             );
             s.push_str(&mc_format);
