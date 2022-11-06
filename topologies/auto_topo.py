@@ -133,7 +133,7 @@ def simpleRun(args):
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue  # Sender is not a receiver
-                cmd = f"perf stat -o {logs_dir}/logs/perf-receiver-{str(id_recv)}.txt unicast/receiver {loopbacks[f'{id_recv}']} 100 2> {logs_dir}/logs/receiver-{str(id_recv)}.txt &"
+                cmd = f"perf stat -o {logs_dir}/logs/perf-receiver-{str(id_recv)}.txt unicast/receiver {loopbacks[f'{id_recv}']} 100 >> /dev/null &"
                 print(cmd)
                 net[f"{id_recv}"].cmd(cmd)
             time.sleep(3)
@@ -141,7 +141,7 @@ def simpleRun(args):
             while id_recv < args.nb_receivers:
                 id_recv += 1
                 if id_recv == args.sender: continue
-                cmd = f"perf stat -o {logs_dir}/logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 2> {logs_dir}/logs/sender-{str(args.sender)}-{str(id_recv)}.txt"
+                cmd = f"perf stat -o {logs_dir}/logs/perf-sender-{args.sender}-{str(id_recv)}.txt unicast/sender {loopbacks[f'{args.sender}']} {loopbacks[f'{id_recv}']} 100 >> /dev/null"
                 print(cmd)
                 net[f"{args.sender}"].cmd(cmd)
             print("Exiting...")

@@ -1,3 +1,6 @@
 [submodule "raw-socket/libraries/QCBOR"]
 	path = raw-socket/libraries/QCBOR
 	url = https://github.com/laurencelundblade/QCBOR.git
+[submodule "old-bier"]
+	path = old-bier
+	url = git@github.com:louisna/bier-socket-api.git
