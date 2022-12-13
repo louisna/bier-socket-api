@@ -16,4 +16,14 @@ Additionally, it exposes a socket-like API to use BIER for the application.
 
 ## Cite this paper
 
-This work is subject to a submission for a paper at the CoNEXT Student Workshop 2022 (CoNEXT SW'22). The paper has been accepted but not published yet. Publication of this paper shall give the citation instructions.
+This work is subject to a submission for a paper at the CoNEXT Student Workshop 2022 (CoNEXT SW'22).
+
+```
+@inproceedings{navarre2022experimenting,
+  title={Experimenting with bit index explicit replication},
+  author={Navarre, Louis and Rybowski, Nicolas and Bonaventure, Olivier},
+  booktitle={Proceedings of the 3rd International CoNEXT Student Workshop},
+  pages={17--19},
+  year={2022}
+}
+```
