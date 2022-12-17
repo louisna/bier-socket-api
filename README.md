@@ -2,6 +2,16 @@
 
 Implementation of the Bit Index Explicit Replication (BIER) multicast forwarding mechanism.
 
+## Use bier-rust instead
+
+I wrote an updated version of BIER: [bier-rust](https://github.com/louisna/bier-rust). It proposes an implementation in the Rust programming language, which is both safer and cleaner (in my humble opinion), without loosing performance.
+
+Additionally, this project exposes the BIER processing as a library, independently of the the I/O. This is similar to Cloudflare quiche. The user must handle the I/O and send the payload to the BIER processing.
+
+Finally, this updated implementation provides tests for every part of the BIER processing, as well as for the BIER configuration binary.
+
+In conclusion, I suggest to use [bier-rust](https://github.com/louisna/bier-rust) instead of this project.
+
 ## Bit Index Explicit Replication (BIER)
 
 BIER is a recently standardised (by the IETF) multicast forwarding mechanism that solves some scalability issues of IP Multicast. Instead of per-group state to forward a multicast packet, a BIER header contains a *bitstring* where each bit uniquely identifies a router in the network.
